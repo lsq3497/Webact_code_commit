@@ -1,6 +1,6 @@
 """
-单步执行器：对单个 step 完成 Locate（由 executor 事前填入）→ Readiness → Action → 页面变化验证。
-返回结构化 StepResult 供上层做失败判定与自动修复。
+Single-step executor: for one plan step runs Readiness (if element_id) → Action → page-change check.
+Locate is filled in by the caller beforehand. Returns a structured StepResult for failure handling and repair.
 """
 
 from typing import Any, Callable, Dict, List, Optional, TypedDict
@@ -37,9 +37,9 @@ def execute_step(
     locate_multiple_candidates_marker: str,
 ) -> StepResult:
     """
-    执行单个 step：Readiness（若需要 element_id）→ Action → 页面变化验证。
-    Locate 由上层在调用前完成，step["target"]["value"] 已为 element_id 或
-    locate_multiple_candidates_marker 或空（表示 locate_empty）。
+    Run one plan step: Readiness (when element_id needed) → Action → page-change verification.
+    Locate is done before this call; step["target"]["value"] is element_id,
+    locate_multiple_candidates_marker, or empty (locate_empty).
     """
     primitive = (step.get("primitive") or "").upper()
     target = step.get("target", {})

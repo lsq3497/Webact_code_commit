@@ -1,13 +1,13 @@
 """
-ActSpec 离线复用评估器：
-- 从单个任务的日志中提取 ActSpec 调用记录
-- 结合库中 ActSpec 定义和执行前后状态，判断本次调用是否“成功复用”
-- 聚合为 per-action_id 的 usage/success/fail 统计
-- 通过 ActSpecLibrary.update_stats_batch 写回库，并按规则禁用不可靠的 ActSpec
+Offline ActSpec reuse evaluator:
+- Read ActSpec invocations from per-task logs
+- Judge whether each call was a successful reuse given library definitions and before/after text
+- Aggregate per-action_id usage/success/fail counters
+- Persist via ActSpecLibrary.update_stats_batch and disable unreliable specs
 
-注意：
-- 目前优先使用在线执行阶段记录的 pre/post-condition 结果；
-- 如需更强的语义判断，可在 _llm_judge_call 中扩展更复杂的 prompt。
+Notes:
+- Prefer online pre/post-condition flags when present
+- Extend _llm_judge_call prompts for richer semantics if needed
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from .actspec_library import ActSpecLibrary
 
 
 def _load_actspec_map(library: ActSpecLibrary, library_path: str) -> Dict[str, Dict[str, Any]]:
-    """将指定库路径下的 ActSpec 加载为 {action_id: actspec} 映射。"""
+    """Load {action_id: actspec} from library_path."""
     actspecs = library.load_library(library_path)
     mapping: Dict[str, Dict[str, Any]] = {}
     for spec in actspecs:
@@ -38,11 +38,7 @@ def _llm_judge_call(
     actspec: Dict[str, Any],
     call_record: Dict[str, Any],
 ) -> bool:
-    """
-    使用 LLM 对单次 ActSpec 调用是否“成功复用”做一个语义判断。
-    当前实现尽量简单：给出 ActSpec 的 effect / post_condition 和执行前后文本。
-    返回 True 表示成功，False 表示失败。
-    """
+    """LLM judge for successful reuse from effect/post_condition and before/after text."""
     
     pre_text = call_record.get("pre_text") or ""
     post_text = call_record.get("post_text") or ""
@@ -95,14 +91,8 @@ def evaluate_actspec_reuse_for_log(
     llm_cfg: lm_config.LMConfig | None = None,
 ) -> Tuple[Dict[str, Dict[str, int]], List[Tuple[str, bool]]]:
     """
-    对单个任务日志文件进行 ActSpec 复用评估，返回 per-action_id 的统计增量，
-    以及每次调用的 (action_id, success_flag) 用于更新置信度。
-
-    返回值形如：
-        (
-          { "action_id_1": {"usage_count": 3, "success_count": 2, "fail_count": 1}, ... },
-          [("action_id_1", True), ("action_id_1", False), ...]  # 按调用顺序
-        )
+    Evaluate one task log: return incremental stats per action_id and ordered (action_id, success) pairs
+    for confidence updates.
     """
     path = Path(log_file)
     if not path.exists():
@@ -182,9 +172,7 @@ def evaluate_and_update_library_for_log(
     llm_cfg: lm_config.LMConfig | None = None,
     convert_to_negative_constraints: bool = True,
 ) -> None:
-    """
-    对单个任务日志做 ActSpec 复用评估，并将结果写回库（更新 usage/fail/disabled 与置信度）。
-    """
+    """Run reuse evaluation for one log and persist stats (usage/fail/disabled/confidence)."""
     stats, confidence_updates = evaluate_actspec_reuse_for_log(log_file, library_path, llm_cfg)
     if not stats and not confidence_updates:
         return

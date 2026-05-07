@@ -1,5 +1,5 @@
 """
-Accessibility Tree解析器：解析Accessibility Tree文本，提取元素信息
+Accessibility tree parser: parse a11y tree text into element records.
 """
 
 import re
@@ -7,18 +7,10 @@ from typing import Dict, List, Any, Optional
 
 
 class AccessibilityTreeParser:
-    """解析Accessibility Tree文本，提取元素信息"""
-    
+    """Parse accessibility tree text into elements."""
+
     def parse(self, observation_text: str) -> Dict[str, Any]:
-        """
-        解析Accessibility Tree文本，构建元素树
-        
-        Args:
-            observation_text: Accessibility Tree文本字符串
-        
-        Returns:
-            元素树字典，包含所有元素及其层级关系
-        """
+        """Build an element tree from accessibility tree text."""
         lines = observation_text.split('\n')
         elements = []
         stack = []  
@@ -59,13 +51,10 @@ class AccessibilityTreeParser:
     
     def _parse_line(self, line: str) -> Optional[Dict[str, Any]]:
         """
-        解析单行Accessibility Tree文本
-        
-        格式示例：
+        Parse one line of accessibility tree text.
+        Examples:
         - link [79] 'Forums' [url: http://...]
         - searchbox [93] 'Search query'
-        - button [113] 'MarvelsGrantMan136'
-        - text 'Postmill'
         """
         
         pattern1 = r"^(\w+)\s+\[(\d+)\]\s+'([^']*)'\s*(?:\[url:\s*([^\]]+)\])?"
@@ -119,14 +108,14 @@ class AccessibilityTreeParser:
         return None
     
     def find_element_by_id(self, tree: Dict[str, Any], element_id: str) -> Optional[Dict[str, Any]]:
-        """根据element_id查找元素"""
+        """Find element by element_id."""
         for element in tree.get("elements", []):
             if element.get("element_id") == element_id:
                 return element
         return None
     
     def get_element_context(self, tree: Dict[str, Any], element_id: str) -> Dict[str, Any]:
-        """获取元素的上下文信息（父元素、兄弟元素、区域等）"""
+        """Parent, siblings, region context for an element."""
         element = self.find_element_by_id(tree, element_id)
         if not element:
             return {}

@@ -1,5 +1,5 @@
 """
-元素上下文抽取器：从轨迹中抽取元素的上下文信息
+Element context extractor: pull semantic / structural context around an element from a trace.
 """
 
 from typing import Dict, List, Any
@@ -7,7 +7,7 @@ from .accessibility_tree_parser import AccessibilityTreeParser
 
 
 class ElementContextExtractor:
-    """从轨迹中抽取元素的上下文信息"""
+    """Extract element-centric context from trajectory observations."""
     
     def __init__(self):
         self.parser = AccessibilityTreeParser()
@@ -18,17 +18,7 @@ class ElementContextExtractor:
         action_step_idx: int,
         element_id: str
     ) -> Dict[str, Any]:
-        """
-        抽取指定元素在指定步骤的上下文信息
-        
-        Args:
-            trajectory: 完整轨迹
-            action_step_idx: action执行的步骤索引
-            element_id: 元素ID（字符串格式，如"79"）
-        
-        Returns:
-            元素上下文字典
-        """
+        """Context dict for element_id at action_step_idx using that step's observation."""
         
         if action_step_idx >= len(trajectory):
             return {}
@@ -62,7 +52,7 @@ class ElementContextExtractor:
         }
     
     def _extract_semantic_features(self, element: Dict) -> Dict[str, Any]:
-        """提取语义特征"""
+        """Role/label/text/url snapshot."""
         return {
             "role": element.get("role"),
             "label": element.get("label"),
@@ -75,7 +65,7 @@ class ElementContextExtractor:
         context: Dict[str, Any],
         tree: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """提取相对上下文"""
+        """Parent/siblings/region/form/modal hints."""
         relative_context = {
             "parent": None,
             "siblings": [],

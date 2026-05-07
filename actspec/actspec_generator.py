@@ -1,5 +1,5 @@
 """
-ActSpec生成器：将切分的action序列转换为符合规范的ActSpec JSON
+ActSpec generator: turn segmented action traces into valid ActSpec JSON.
 """
 
 import copy
@@ -13,15 +13,10 @@ from .negative_constraint_utils import build_action_history_prefix
 
 
 class ActSpecGenerator:
-    """ActSpec生成器，将segment转换为ActSpec JSON"""
-    
+    """Build ActSpec JSON objects from trace segments."""
+
     def __init__(self, llm_config: Optional[lm_config.LMConfig] = None):
-        """
-        初始化ActSpec生成器
-        
-        Args:
-            llm_config: LLM配置，如果为None则使用默认配置
-        """
+        """Optional LMConfig; otherwise default OpenAI chat settings."""
         self.llm_config = llm_config
         if self.llm_config is None:
             
@@ -46,20 +41,7 @@ class ActSpecGenerator:
         segment_start_idx: Optional[int] = None,
         segment_end_idx: Optional[int] = None
     ) -> Dict[str, Any]:
-        """
-        生成单个ActSpec
-        
-        Args:
-            action_sequence: action序列（从segment中提取）
-            context: 上下文信息（site, page, url）
-            task_info: 任务信息
-            trajectory: 完整轨迹（用于提取Locate/Pre/Post）
-            segment_start_idx: segment在trajectory中的起始索引
-            segment_end_idx: segment在trajectory中的结束索引
-        
-        Returns:
-            ActSpec字典，包含7类信息
-        """
+        """Assemble one ActSpec from segment actions and optional full trajectory indices."""
         
         parameters = self._extract_parameters(action_sequence)
         
@@ -117,7 +99,7 @@ class ActSpecGenerator:
                     segment_start=segment_start_idx,
                 )
             except Exception as e:
-                print(f"[ActSpec] 构建 action_history_prefix 失败: {e}")
+                print(f"[ActSpec] Failed to build action_history_prefix: {e}")
                 action_history_prefix = []
 
         actspec = {
@@ -168,7 +150,7 @@ class ActSpecGenerator:
         
         validation_errors = self._validate_actspec(actspec)
         if validation_errors:
-            print(f"[Warning] ActSpec验证发现问题 ({actspec.get('action_id', 'unknown')}):")
+            print(f"[Warning] ActSpec validation issues ({actspec.get('action_id', 'unknown')}):")
             for error in validation_errors:
                 print(f"  - {error}")
             
@@ -181,15 +163,7 @@ class ActSpecGenerator:
         return actspec
     
     def _extract_parameters(self, action_sequence: List[Any]) -> Dict[str, Any]:
-        """
-        提取参数定义
-        
-        Args:
-            action_sequence: action序列
-        
-        Returns:
-            参数定义字典
-        """
+        """LLM-assisted parameter schema extraction from primitive strings."""
         parameters = {}
         
         
@@ -216,59 +190,59 @@ class ActSpecGenerator:
             if click_id_match:
                 element_ids.append(f"click[{i}]: element_id={click_id_match.group(1)}")
         
-        text_values_str = ", ".join(text_values[:5]) if text_values else "无"
-        element_ids_str = ", ".join(element_ids[:5]) if element_ids else "无"
+        text_values_str = ", ".join(text_values[:5]) if text_values else "(none)"
+        element_ids_str = ", ".join(element_ids[:5]) if element_ids else "(none)"
         
-        system_prompt = """你是一个参数提取专家。分析action序列，识别可以参数化的值。
+        system_prompt = """You extract parameter definitions from primitive action traces.
 
-参数类型可以是：
-- enum: 枚举值（如状态、类型等），需要提供candidates列表
-- string: 字符串（如搜索关键词、输入文本等）
-- number: 数字（整数或浮点数）
-- boolean: 布尔值
+Types:
+- enum: discrete values; include candidates[]
+- string: free text (keywords, inputs)
+- number: numeric ids or counters
+- boolean: flags
 
-参数提取原则：
-1. 识别在多次使用中可能变化的值（如搜索关键词、筛选条件）
-2. 识别具有业务语义的值（如订单状态、用户类型）
-3. 避免参数化固定值（如固定的按钮文本、固定的URL路径）
-4. 对于枚举类型，需要从上下文中推断可能的候选值
+Rules:
+1. Parameterize values likely to change across tasks (filters, keywords).
+2. Prefer business-meaningful fields (status, role).
+3. Skip obviously fixed chrome (static button labels, hard-coded asset URLs) unless clearly reusable.
+4. For enums, infer realistic candidate sets from context.
 
-请返回JSON格式的参数定义。"""
-        
-        user_prompt = f"""分析以下action序列，识别可参数化的值：
+Return JSON only."""
 
-Action序列：
+        user_prompt = f"""Parameterize this trace:
+
+Actions:
 {action_summary}
 
-序列中的文本值：{text_values_str}
-序列中的element_id：{element_ids_str}
+Sampled text values: {text_values_str}
+Sampled element ids: {element_ids_str}
 
-注意：
-- 对于TYPE操作，如果element_id可能变化，应该提取为参数（如type_id、input_id等）
-- 对于CLICK操作，如果element_id可能变化，应该提取为参数（如button_id、click_id等）
-- 对于TYPE操作中的文本，应该提取为参数（如search_keyword、input_text等）
+Hints:
+- TYPE steps: varying element ids -> dedicated id params (input_id, etc.).
+- CLICK steps: varying targets -> button_id / click_id style params.
+- TYPE literals -> search_keyword / input_text style params.
 
-返回JSON格式，例如：
-{ 
-  "status": { 
+Example shape:
+{{
+  "status": {{
     "type": "enum",
     "candidates": ["pending", "paid", "shipped"],
     "description": "order status to filter",
     "optional": false
-  } ,
-  "search_keyword": { 
+  }},
+  "search_keyword": {{
     "type": "string",
     "optional": false,
     "description": "search keyword to query"
-  } ,
-  "page_number": { 
+  }},
+  "page_number": {{
     "type": "number",
     "optional": true,
     "description": "page number for pagination"
-  } 
-} 
+  }}
+}}
 
-只返回JSON，不要其他文字。"""
+JSON only, no prose."""
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -314,17 +288,7 @@ Action序列：
         context: Dict[str, Any],
         task_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        提取上下文信息
-        
-        Args:
-            action_sequence: action序列
-            context: 基础上下文（site, page, url）
-            task_info: 任务信息
-        
-        Returns:
-            上下文信息字典
-        """
+        """Augment site/page/url_pattern/required_elements from actions + task metadata."""
         site = context.get("site", "unknown")
         page = context.get("page", "unknown")
         url = context.get("url", "")
@@ -457,47 +421,38 @@ Action序列：
         action_sequence: List[Any],
         context: Dict[str, Any]
     ) -> Dict[str, str]:
-        """
-        生成语义描述（使用LLM）
-        
-        Args:
-            action_sequence: action序列
-            context: 上下文信息
-        
-        Returns:
-            描述字典（summary, when_to_use, effect）
-        """
+        """LLM-written summary / when_to_use / effect (intent-level, no literal DOM ids)."""
         action_strs = [str(action) for action in action_sequence]
         action_summary = "\n".join([f"{i}: {a}" for i, a in enumerate(action_strs)])
         
-        system_prompt = """你是一个动作描述专家。为给定的action序列生成自然语言描述。
+        system_prompt = """You describe high-level UI routines.
 
-描述应该：
-1. 强调「意图」而不是「怎么点」
-2. 明确输入 → 输出效果
-3. 使用业务语义，而不是DOM语义
-4. **重要**：不要包含具体的值（如具体的数字、具体的搜索关键词等），应该使用抽象的描述
-5. 例如：不要说"输入Worcester"，而要说"输入搜索关键词"
-6. 例如：不要说"点击element_id=79"，而要说"点击目标元素"
-7. 例如：不要说"输入数字93和1"，而要说"输入搜索参数" """
-        
-        user_prompt = f"""为以下action序列生成描述：
+Rules:
+1. Focus on user intent, not click-by-click mechanics.
+2. State input → observable outcome.
+3. Use product language, not DOM trivia.
+4. Never bake concrete literals (city names, numeric ids, one-off keywords)—stay abstract.
+5. Say "enter the search keywords" not "type Worcester".
+6. Say "activate the target control" not "click element 79".
+JSON only for outputs."""
 
-上下文：
+        user_prompt = f"""Describe this routine:
+
+Context:
 - Site: {context.get('site', 'unknown')}
 - Page: {context.get('page', 'unknown')}
 
-Action序列：
+Actions:
 {action_summary}
 
-返回JSON格式：
-{ 
-  "summary": "简短总结（一句话）",
-  "when_to_use": "什么时候使用这个动作",
-  "effect": "执行后的效果"
-} 
+Return JSON:
+{{
+  "summary": "one sentence overview",
+  "when_to_use": "when to invoke this bundle",
+  "effect": "expected state after success"
+}}
 
-只返回JSON，不要其他文字。"""
+JSON only, no extra text."""
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -516,23 +471,15 @@ Action序列：
         except Exception as e:
             print(f"[Warning] Description generation failed: {e}, using fallback")
             description = {
-                "summary": "执行一系列操作",
-                "when_to_use": "需要执行这些操作时",
-                "effect": "完成操作"
+                "summary": "Execute the recorded UI steps",
+                "when_to_use": "When this workflow is required",
+                "effect": "Task completes after the listed interactions",
             }
         
         return description
     
     def _create_executable_plan(self, action_sequence: List[Any]) -> List[Dict[str, Any]]:
-        """
-        创建可执行计划
-        
-        Args:
-            action_sequence: action序列
-        
-        Returns:
-            可执行计划列表
-        """
+        """Normalize primitives into internal plan dicts."""
         plan = []
         
         for action in action_sequence:
@@ -821,22 +768,7 @@ Action序列：
         parameters: Dict[str, Any],
         action_sequence: List[Any]
     ) -> List[Dict[str, Any]]:
-        """
-        参数化plan：将plan中应该参数化的值替换为占位符
-        
-        改进点：
-        1. 确保所有element_id都被参数化（特别是TYPE操作的target.value）
-        2. 确保所有文本输入都被参数化（TYPE操作的text字段）
-        3. 确保参数类型匹配（text字段使用string类型，target.value使用number类型）
-        
-        Args:
-            plan: 可执行计划
-            parameters: 参数定义
-            action_sequence: 原始action序列
-        
-        Returns:
-            参数化后的plan
-        """
+        """Swap literals for {{param}} placeholders aligned with schema (ids:number, text:string)."""
         if not parameters:
             return plan
         
@@ -1011,16 +943,7 @@ Action序列：
         parameters: Dict[str, Any],
         plan: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """
-        创建参数绑定规则
-        
-        Args:
-            parameters: 参数定义
-            plan: 可执行计划
-        
-        Returns:
-            绑定规则字典
-        """
+        """LLM mapping from parameters to plan step fields."""
         bindings = {}
         
         
@@ -1033,38 +956,30 @@ Action序列：
         param_names = list(parameters.keys())
         param_descriptions = {name: params.get("description", "") for name, params in parameters.items()}
         
-        system_prompt = """你是一个参数绑定专家。分析可执行计划，确定每个参数应该绑定到plan的哪个位置。
+        system_prompt = """You map parameters onto plan steps.
 
-绑定规则：
-1. 参数应该绑定到plan中对应的字段（如text、target.value、url、option等）
-2. 一个参数可以绑定到多个位置（如果它在plan中出现多次）
-3. 绑定位置使用step索引（从0开始）和字段路径（如"text"、"target.value"、"url"等）
+Each binding lists {step, field} pairs (0-based step index). Fields include text, target.value, url, option, etc.
+A parameter may bind to multiple locations. Return JSON only."""
 
-返回JSON格式的绑定规则。"""
-        
-        user_prompt = f"""分析以下可执行计划，为每个参数创建绑定规则：
+        user_prompt = f"""Create bindings for:
 
-参数列表：
+Parameters:
 {json.dumps(param_descriptions, indent=2, ensure_ascii=False)}
 
-可执行计划：
+Plan:
 {plan_str}
 
-返回JSON格式，例如：
-{ 
-  "search_keyword": { 
-    "bind_to": [
-      { "step": 0, "field": "text"} 
-    ]
-  } ,
-  "status": { 
-    "bind_to": [
-      { "step": 1, "field": "target.value"} 
-    ]
-  } 
-} 
+Example:
+{{
+  "search_keyword": {{
+    "bind_to": [{{"step": 0, "field": "text"}}]
+  }},
+  "status": {{
+    "bind_to": [{{"step": 1, "field": "target.value"}}]
+  }}
+}}
 
-只返回JSON，不要其他文字。"""
+JSON only, no prose."""
         
         try:
             messages = [
@@ -1116,16 +1031,7 @@ Action序列：
         parameters: Dict[str, Any],
         plan: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """
-        创建参数绑定规则（fallback方法，基于占位符匹配）
-        
-        Args:
-            parameters: 参数定义
-            plan: 可执行计划
-        
-        Returns:
-            绑定规则字典
-        """
+        """Heuristic bindings by scanning {{param}} placeholders inside serialized steps."""
         bindings = {}
         
         
@@ -1213,49 +1119,32 @@ Action序列：
         description: Dict[str, str],
         action_sequence: List[Any]
     ) -> tuple[str, str]:
-        """
-        生成action_id和action_name
-        
-        Args:
-            context: 上下文信息
-            description: 描述信息
-            action_sequence: action序列
-        
-        Returns:
-            (action_id, action_name) 元组
-        """
+        """Derive hierarchical action_id and PascalCase action_name."""
         site = context.get("site", "unknown")
         page = context.get("page", "unknown")
         summary = description.get("summary", "action")
         
         
-        system_prompt = """你是一个命名专家。根据动作描述生成一个简洁、清晰的PascalCase动作名称。
+        system_prompt = """You output a concise PascalCase verb+noun name for a UI routine.
 
-命名规则：
-1. 使用PascalCase（首字母大写的驼峰命名）
-2. 名称应该简洁（2-4个单词）
-3. 名称应该反映动作的核心意图
-4. 避免使用过于通用的词汇（如"Action"、"Do"等）
-5. 使用动词+名词的组合（如"FilterOrders"、"SearchProducts"）
-6. **重要**：不要包含具体的值（如具体的数字、具体的搜索关键词等），应该使用抽象的描述
-7. 例如：不要命名为"SearchWorcester"，而应该命名为"SearchByKeyword"
-8. 例如：不要命名为"ClickElement79"，而应该命名为"ClickElement"
-9. 避免使用失败相关的词汇（如"Failed"、"Error"、"Attempt"等），除非动作本身就是处理失败场景的
+Rules:
+- 2-4 words, intent focused, no literals from the trace.
+- Avoid generic tokens like Action/Do unless unavoidable.
+- Never bake city names, ids, or keywords into the title.
+- Avoid failure words unless the routine truly models recovery.
 
-只返回名称，不要其他文字。"""
+Return the name only."""
         
-        user_prompt = f"""为以下动作生成PascalCase名称：
+        user_prompt = f"""Name this routine (PascalCase):
 
-动作描述：{summary}
-上下文：{site} - {page}
+Summary: {summary}
+Context: {site} - {page}
 
-示例：
+Examples:
 - "Filter orders by status" -> "FilterOrdersByStatus"
 - "Search for products" -> "SearchProducts"
-- "Navigate to user profile" -> "NavigateToUserProfile"
-- "Submit login form" -> "SubmitLoginForm"
 
-只返回名称，不要其他文字。"""
+Name only, no punctuation."""
         
         try:
             messages = [
@@ -1311,18 +1200,7 @@ Action序列：
         action_sequence: List[Any],
         context: Dict[str, Any]
     ) -> tuple[bool, str, str]:
-        """
-        使用LLM检测ActSpec是否表示失败场景
-        
-        Args:
-            actspec: ActSpec字典
-            action_sequence: 原始action序列
-            context: 上下文信息
-        
-        Returns:
-            (is_failed: bool, failure_reason: str, constraint_subtype: str) 元组。
-            constraint_subtype 为 "readiness" | "disambiguation" | "unspecified" 之一。
-        """
+        """LLM classifier for failed / negative-constraint candidate traces."""
         
         
         plan = actspec.get("plan", [])
@@ -1334,7 +1212,7 @@ Action序列：
             
             
             if action_str.startswith("stop") or "stop [" in action_str:
-                print(f"[过滤] 检测到stop类型的action，跳过失败检测: {action_str[:100]}")
+                print(f"[Filter] stop action detected, skipping failure classification: {action_str[:100]}")
                 return False, "", "unspecified"
         
         
@@ -1342,7 +1220,7 @@ Action序列：
             primitive = step.get("primitive", "")
             raw = step.get("raw", "")
             if primitive == "STOP" or (isinstance(raw, str) and raw.strip().lower().startswith("stop")):
-                print(f"[过滤] Plan中包含stop primitive，跳过失败检测")
+                print(f"[Filter] plan contains STOP primitive, skipping failure classification")
                 return False, "", "unspecified"
         description = actspec.get("description", {})
         action_name = actspec.get("action_name", "")
@@ -1353,55 +1231,54 @@ Action序列：
         description_str = json.dumps(description, indent=2, ensure_ascii=False)
         action_sequence_str = "\n".join([f"{i}: {str(a)}" for i, a in enumerate(action_sequence)])
         
-        system_prompt = """你是一个轨迹分析专家。你的任务是判断给定的ActSpec是否表示一个失败或未完成的场景。
+        system_prompt = """You decide whether an ActSpec encodes a failed or incomplete interaction.
 
-**重要：以下情况不应该被认为是失败场景**：
-- **stop类型的action**：如果action序列或plan中包含"stop [N/A - ...]"或类似的stop action，这是手动实现的正常停止，不应该被认为是失败。stop action通常用于表示任务完成、无法继续、或需要停止的情况，这些都是正常的控制流，不是错误。
-- **note类型的action**：note [内容] 是文本备忘录，供 LLM 后续行动记忆，不是可执行操作，不应视为失败。若 plan 中仅有 note/UNKNOWN 且 raw 为 "note [...]"，应返回 is_failed=false。
+NOT failures:
+- Explicit stop[...] primitives / actions are normal control flow (done, blocked, user abort)—set is_failed=false.
+- note[...] inside UNKNOWN rows are memories for the LLM, not executable failures—set is_failed=false when that is all that remains.
 
-失败场景的特征包括（但不限于）：
-1. **Plan中包含UNKNOWN primitive**：表示无法执行或未知的操作（但排除stop类型的正常停止）
-2. **描述中明确提到失败**：如"未能成功"、"未成功"、"无法"、"不能"、"失败"、"错误"等
-3. **Action名称中包含失败标识**：如"failed"、"error"、"attempt"、"失败"、"错误"等
-4. **描述中暗示操作未完成**：如"意识到需要..."、"转而寻找..."、"技术限制"等
-5. **Plan中缺少关键步骤**：操作序列不完整，无法达成预期目标
-6. **上下文不匹配导致的失败**：如在错误的平台上尝试操作
+Likely failures:
+1. UNKNOWN primitives that are not benign notes.
+2. Descriptions mentioning inability / errors / unfinished work (English or Chinese cues).
+3. Names containing failed/error/attempt (unless clearly recovery flows).
+4. Plans missing critical steps vs stated intent.
+5. Clear context mismatch (wrong site/page assumptions).
 
-**负约束子类型（仅当 is_failed=true 时填写 constraint_subtype）**：
-- **readiness**：页面尚未就绪时就执行了动作。典型信号：刚发生 URL 跳转/弹窗/刷新后多次 click/type，但无有效状态变化（避免抢跑）。
-- **disambiguation**：页面上存在多个相似 target，agent 反复选错同一类。典型信号：多次对同类元素（相同 role/text）点击均未触发预期变化。
-- **unspecified**：其他失败类型，无法明确归入上述两类。
+constraint_subtype when is_failed=true:
+- readiness: acted before UI stabilized (navigation/modals/refresh spam with no effect).
+- disambiguation: repeated wrong picks among ambiguous similar targets.
+- unspecified: everything else.
 
-请仔细分析给定的ActSpec，判断它是否表示失败场景。特别注意：如果包含stop类型的action，应该返回is_failed=false。"""
-        
-        user_prompt = f"""分析以下ActSpec，判断它是否表示失败场景：
+Always JSON only; stop actions => is_failed=false."""
+
+        user_prompt = f"""Classify this ActSpec:
 
 Action ID: {action_id}
 Action Name: {action_name}
 
-上下文：
+Context:
 - Site: {context.get('site', 'unknown')}
 - Page: {context.get('page', 'unknown')}
 - URL Pattern: {context.get('url_pattern', '/')}
 
-Action序列：
+Actions:
 {action_sequence_str}
 
-Plan（可执行计划）：
+Plan:
 {plan_str}
 
-Description（描述）：
+Description:
 {description_str}
 
-请返回JSON格式：
-{ 
-  "is_failed": true/false,
-  "failure_reason": "如果is_failed为true，说明失败原因；如果为false，可以为空字符串",
-  "constraint_subtype": "仅当is_failed为true时必填，且必须为以下之一：readiness（页面未就绪时就执行了动作，如刚跳转/弹窗后立即操作导致无效果）、disambiguation（页面上多个相似元素时反复选错同一类目标）、unspecified（其他失败类型）",
-  "confidence": 0.0-1.0之间的置信度
-} 
+Return JSON:
+{{
+  "is_failed": true,
+  "failure_reason": "short explanation if failed else empty string",
+  "constraint_subtype": "readiness | disambiguation | unspecified (required when is_failed)",
+  "confidence": 0.85
+}}
 
-只返回JSON，不要其他文字。"""
+JSON only."""
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -1428,25 +1305,17 @@ Description（描述）：
             
             
             if is_failed and confidence < 0.6:
-                print(f"[Warning] 低置信度的失败判断 (confidence={confidence}): {action_id}")
+                print(f"[Warning] Low-confidence failure verdict (confidence={confidence}): {action_id}")
             
             return is_failed, failure_reason, constraint_subtype
             
         except Exception as e:
-            print(f"[Warning] LLM失败检测失败: {e}, 使用fallback方法")
+            print(f"[Warning] LLM failure classifier error: {e}, using fallback")
             
             return self._is_failed_actspec_fallback(actspec), "", "unspecified"
     
     def _is_failed_actspec_fallback(self, actspec: Dict[str, Any]) -> bool:
-        """
-        Fallback失败检测方法（仅在LLM失败时使用）
-        
-        Args:
-            actspec: ActSpec字典
-        
-        Returns:
-            如果是失败场景，返回True
-        """
+        """Cheap UNKNOWN/stop heuristics when the LLM classifier fails."""
         plan = actspec.get("plan", [])
         
         
@@ -1467,21 +1336,13 @@ Description（描述）：
         
         
         action_name = actspec.get("action_name", "").lower()
-        if any(keyword in action_name for keyword in ["failed", "error", "attempt", "失败", "错误"]):
+        if any(keyword in action_name for keyword in ["failed", "error", "attempt"]):
             return True
         
         return False
     
     def _validate_actspec(self, actspec: Dict[str, Any]) -> List[str]:
-        """
-        验证ActSpec的正确性
-        
-        Args:
-            actspec: ActSpec字典
-        
-        Returns:
-            错误列表，如果为空则表示验证通过
-        """
+        """Structural consistency checks for parameters, placeholders, and bindings."""
         errors = []
         parameters = actspec.get("parameters", {})
         plan = actspec.get("plan", [])
@@ -1490,7 +1351,7 @@ Description（描述）：
         
         for param_name in bindings.keys():
             if param_name not in parameters:
-                errors.append(f"绑定中引用的参数 '{param_name}' 未在parameters中定义")
+                errors.append(f"Binding references undefined parameter '{param_name}'")
         
         
         plan_str = json.dumps(plan, ensure_ascii=False)
@@ -1500,7 +1361,7 @@ Description（描述）：
             has_binding = param_name in bindings
             
             if not has_placeholder and not has_binding:
-                errors.append(f"参数 '{param_name}' 在plan中没有占位符，也没有绑定规则")
+                errors.append(f"Parameter '{param_name}' lacks both placeholders and bindings")
         
         
         for step_idx, step in enumerate(plan):
@@ -1515,8 +1376,8 @@ Description（描述）：
                         param_type = parameters[param_name].get("type", "string")
                         if param_type == "number":
                             errors.append(
-                                f"plan[{step_idx}].text 使用了number类型参数 '{param_name}'，"
-                                f"应该使用string类型参数"
+                                f"plan[{step_idx}].text binds number-typed param '{param_name}' "
+                                f"(expected string)"
                             )
             
             
@@ -1528,8 +1389,8 @@ Description（描述）：
                         param_type = parameters[param_name].get("type", "string")
                         if param_type != "number":
                             errors.append(
-                                f"plan[{step_idx}].target.value 使用了{param_type}类型参数 '{param_name}'，"
-                                f"应该使用number类型参数（element_id）"
+                                f"plan[{step_idx}].target.value uses {param_type} param '{param_name}' "
+                                f"(expected number element id)"
                             )
         
         
@@ -1539,23 +1400,14 @@ Description（描述）：
                 step_idx = bind_rule.get("step")
                 if step_idx is None or step_idx < 0 or step_idx >= len(plan):
                     errors.append(
-                        f"参数 '{param_name}' 的绑定规则中step索引 {step_idx} 无效"
-                        f"（plan长度为{len(plan)}）"
+                        f"Binding for '{param_name}' references invalid step {step_idx} "
+                        f"(plan length {len(plan)})"
                     )
         
         return errors
     
     def _auto_fix_actspec(self, actspec: Dict[str, Any], errors: List[str]) -> Dict[str, Any]:
-        """
-        自动修复ActSpec中的常见问题
-        
-        Args:
-            actspec: ActSpec字典
-            errors: 验证错误列表
-        
-        Returns:
-            修复后的ActSpec字典
-        """
+        """Patch obvious parameter/type mismatches reported by validation."""
         import copy
         fixed_actspec = copy.deepcopy(actspec)
         parameters = fixed_actspec.get("parameters", {})
@@ -1642,20 +1494,7 @@ Description（描述）：
         actspec: Dict[str, Any],
         action_sequence: List[Any]
     ) -> Dict[str, Any]:
-        """
-        二次检查：修复plan中未参数化的实际值
-        
-        检查plan中所有的value字段，如果它们不是占位符格式（{{param_name}}），
-        而是实际值（数字、字符串等），则根据strategy类型和参数定义，
-        自动替换为合适的占位符。
-        
-        Args:
-            actspec: ActSpec字典
-            action_sequence: 原始action序列（用于辅助匹配）
-        
-        Returns:
-            修复后的ActSpec字典
-        """
+        """Second pass: replace leftover literals with {{param}} using heuristics + optional LLM."""
         import copy
         fixed_actspec = copy.deepcopy(actspec)
         plan = fixed_actspec.get("plan", [])
@@ -1697,7 +1536,7 @@ Description（描述）：
             return fixed_actspec
         
         
-        print(f"[PostProcess] 检测到未参数化的值，开始修复 ActSpec: {actspec.get('action_id', 'unknown')}")
+        print(f"[PostProcess] Unparameterized literals detected, repairing ActSpec: {actspec.get('action_id', 'unknown')}")
         
         
         action_values = {}
@@ -1836,7 +1675,7 @@ Description（描述）：
                             }
                             element_id_params[param_name] = parameters[param_name]
                             matched_param = param_name
-                            print(f"[PostProcess] 自动创建参数: {param_name}")
+                            print(f"[PostProcess] Auto-created parameter: {param_name}")
                         
                         if matched_param:
                             target["value"] = f"{ { {matched_param}} } "
@@ -1854,7 +1693,8 @@ Description（描述）：
                                     "step": step_idx,
                                     "field": "target.value"
                                 })
-                            print(f"[PostProcess] 修复 step[{step_idx}].target.value: '{value}' -> '{ { {matched_param}} } '")
+                            _ph = "{{" + str(matched_param) + "}}"
+                            print(f"[PostProcess] Fixed step[{step_idx}].target.value: {value!r} -> {_ph!r}")
             
             
             if "text" in step:
@@ -1901,7 +1741,8 @@ Description（描述）：
                                 "step": step_idx,
                                 "field": "text"
                             })
-                        print(f"[PostProcess] 修复 step[{step_idx}].text: '{text}' -> '{ { {matched_param}} } '")
+                        _ph = "{{" + str(matched_param) + "}}"
+                        print(f"[PostProcess] Fixed step[{step_idx}].text: {text!r} -> {_ph!r}")
             
             
             if "option" in step:
@@ -1934,7 +1775,8 @@ Description（描述）：
                                 "step": step_idx,
                                 "field": "option"
                             })
-                        print(f"[PostProcess] 修复 step[{step_idx}].option: '{option}' -> '{ { {matched_param}} } '")
+                        _ph = "{{" + str(matched_param) + "}}"
+                        print(f"[PostProcess] Fixed step[{step_idx}].option: {option!r} -> {_ph!r}")
             
             
             if "url" in step:
@@ -1967,7 +1809,8 @@ Description（描述）：
                                 "step": step_idx,
                                 "field": "url"
                             })
-                        print(f"[PostProcess] 修复 step[{step_idx}].url: '{url}' -> '{ { {matched_param}} } '")
+                        _ph = "{{" + str(matched_param) + "}}"
+                        print(f"[PostProcess] Fixed step[{step_idx}].url: {url!r} -> {_ph!r}")
         
         fixed_actspec["plan"] = plan
         fixed_actspec["bindings"] = bindings
@@ -1979,10 +1822,7 @@ Description（描述）：
         step_idx: int,
         field: str
     ) -> Optional[Any]:
-        """
-        从 action_sequence 中指定 step 的 action 里提取指定字段的值，用于填充 candidates。
-        field 为 "target.value" 时提取 element_id；为 "text" 时提取 type 的文本。
-        """
+        """Pull bound fields from primitive strings for candidate population."""
         if step_idx < 0 or step_idx >= len(action_sequence):
             return None
         action_str = str(action_sequence[step_idx]).strip()
@@ -2009,10 +1849,7 @@ Description（描述）：
         actspec: Dict[str, Any],
         action_sequence: List[Any]
     ) -> Dict[str, Any]:
-        """
-        从轨迹 action_sequence 中按 bindings 提取每个参数的实际取值，写入 parameters 的 candidates，
-        确保保存的 ActSpec 能直接复用动作轨迹（执行时可用 candidates 中的 value 填充 plan 的 target.value）。
-        """
+        """Populate parameters[].candidates from trajectory using bindings for replay."""
         import copy
         fixed = copy.deepcopy(actspec)
         parameters = fixed.get("parameters", {})
@@ -2055,15 +1892,7 @@ Description（描述）：
         return fixed
     
     def _is_placeholder(self, value: Any) -> bool:
-        """
-        检查值是否是占位符格式（{{param_name}}）
-        
-        Args:
-            value: 要检查的值
-        
-        Returns:
-            如果是占位符格式，返回True
-        """
+        """True if value looks like {{param}}."""
         if not isinstance(value, str):
             return False
         return value.startswith("{{") and value.endswith("}}") and len(value) > 4
@@ -2076,19 +1905,7 @@ Description（描述）：
         candidate_params: Dict[str, Any],
         all_params: Dict[str, Any]
     ) -> Optional[str]:
-        """
-        使用LLM辅助匹配参数
-        
-        Args:
-            value: 实际值
-            field_type: 字段类型（"element_id", "text", "option", "url"）
-            primitive: primitive类型（"CLICK", "TYPE", "SELECT"等）
-            candidate_params: 候选参数字典
-            all_params: 所有参数字典
-        
-        Returns:
-            匹配的参数名，如果没有匹配则返回None
-        """
+        """Ask LLM to pick best parameter name among candidates."""
         if not candidate_params:
             return None
         
@@ -2105,27 +1922,19 @@ Description（描述）：
                 "candidates": param_def.get("candidates", []) if param_def.get("type") == "enum" else None
             }
         
-        system_prompt = """你是一个参数匹配专家。根据实际值和字段类型，从候选参数中选择最合适的参数。
+        system_prompt = """Pick exactly one parameter key from the candidate JSON.
 
-匹配原则：
-1. 根据字段类型选择参数类型：
-   - element_id (strategy=element_id): 应该使用number类型参数
-   - text: 应该使用string类型参数
-   - option: 应该使用enum类型参数（如果有）
-   - url: 应该使用string类型参数
-2. 根据参数描述和实际值，选择语义最匹配的参数
-3. 如果参数是enum类型，检查实际值是否在candidates中
+Respect types: element ids -> number params, free text -> string, SELECT options -> enum when present, URLs -> string.
+Return only the parameter name, nothing else."""
 
-只返回参数名，不要其他文字。"""
-        
-        user_prompt = f"""实际值: {value}
-字段类型: {field_type}
-Primitive类型: {primitive}
+        user_prompt = f"""Observed value: {value}
+Field kind: {field_type}
+Primitive: {primitive}
 
-候选参数:
+Candidates:
 {json.dumps(param_descriptions, indent=2, ensure_ascii=False)}
 
-请选择最合适的参数名。只返回参数名，不要其他文字。"""
+Return the best parameter name only."""
         
         try:
             messages = [
@@ -2145,10 +1954,10 @@ Primitive类型: {primitive}
                 return response
             else:
                 
-                print(f"[Warning] LLM返回的参数名 '{response}' 不在候选列表中，使用第一个候选参数")
+                print(f"[Warning] LLM picked unknown param '{response}', falling back to first candidate")
                 return list(candidate_params.keys())[0]
         except Exception as e:
-            print(f"[Warning] LLM参数匹配失败: {e}, 使用第一个候选参数")
+            print(f"[Warning] LLM parameter match failed: {e}, using first candidate")
             return list(candidate_params.keys())[0] if candidate_params else None
     
     def _extract_locate_strategies(
@@ -2158,17 +1967,7 @@ Primitive类型: {primitive}
         segment_start_idx: int,
         parameters: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        提取多策略定位器
-        
-        Args:
-            action_sequence: action序列
-            trajectory: 完整轨迹
-            segment_start_idx: segment在trajectory中的起始索引
-        
-        Returns:
-            Locate字典
-        """
+        """Build locate.target_entries with semantic / relative / id strategies."""
         from .element_context_extractor import ElementContextExtractor
         
         extractor = ElementContextExtractor()
@@ -2224,12 +2023,12 @@ Primitive类型: {primitive}
                     locate, action_sequence, trajectory, segment_start_idx
                 )
             except Exception as e:
-                print(f"[Warning] LLM增强定位策略失败: {e}")
+                print(f"[Warning] LLM locate augmentation failed: {e}")
         
         return locate
     
     def _extract_element_ids_from_action(self, action_str: str) -> List[str]:
-        """从action字符串中提取element_id列表"""
+        """Collect numeric ids referenced in a primitive string."""
         element_ids = []
         
         matches = re.findall(r"(?:click|type|hover|select)\s*\[(\d+)\]", action_str, re.I)
@@ -2237,7 +2036,7 @@ Primitive类型: {primitive}
         return element_ids
     
     def _get_element_param_name(self, element_id: str, action_str: str) -> str:
-        """根据action类型和element_id生成参数名"""
+        """Derive default parameter names from primitive kind + element id."""
         action_lower = action_str.lower()
         if "click" in action_lower:
             return "click_id"
@@ -2257,9 +2056,7 @@ Primitive类型: {primitive}
         action_str: str
     ) -> str:
         """
-        从已定义的 parameters 中查找匹配的参数名
-        
-        优先查找包含该 element_id 的参数，如果找不到则使用默认命名规则
+        Look up an existing parameter tied to this element id; otherwise synthesize a name.
         """
         
         for param_name, param_def in parameters.items():
@@ -2281,12 +2078,7 @@ Primitive类型: {primitive}
         param_name: str
     ) -> List[Dict[str, Any]]:
         """
-        生成定位策略列表（按优先级排序）
-        
-        策略优先级：
-        1. semantic（语义特征）- 最稳定，抗UI漂移
-        2. relative_position（相对位置）- 中等稳定（如果可用）
-        3. element_id（元素ID）- 最不稳定，但作为fallback
+        Ordered locate strategies: semantic first, relative second, raw element_id last.
         """
         strategies = []
         
@@ -2396,7 +2188,7 @@ Primitive类型: {primitive}
         segment_start_idx: int
     ) -> Dict[str, Any]:
         """
-        使用LLM增强定位策略（可选，用于复杂场景）
+        Optional LLM pass to refine locate strategies for messy UIs.
         """
         
         
@@ -2410,16 +2202,7 @@ Primitive类型: {primitive}
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        提取执行前适用条件
-        
-        Args:
-            action_sequence: action序列
-            trajectory: 完整轨迹
-            segment_start_idx: segment在trajectory中的起始索引
-            context: 上下文信息
-        
-        Returns:
-            Pre-condition字典
+        Build pre-condition JSON prior to executing the segment.
         """
         
         pre_step = trajectory[segment_start_idx] if segment_start_idx < len(trajectory) else None
@@ -2464,7 +2247,7 @@ Primitive类型: {primitive}
                 pre_condition, action_sequence, pre_obs_text, context
             )
         except Exception as e:
-            print(f"[Warning] LLM增强pre-condition失败: {e}")
+            print(f"[Warning] LLM pre-condition augmentation failed: {e}")
         
         return pre_condition
     
@@ -2473,7 +2256,7 @@ Primitive类型: {primitive}
         action_sequence: List[Any],
         observation_text: str
     ) -> List[Dict[str, Any]]:
-        """从action序列推断必须存在的元素"""
+        """Heuristic required_elements derived from primitives."""
         from .accessibility_tree_parser import AccessibilityTreeParser
         
         parser = AccessibilityTreeParser()
@@ -2516,7 +2299,7 @@ Primitive类型: {primitive}
         return required_elements
     
     def _get_element_strategy_signature(self, strategy: Dict[str, Any]) -> str:
-        """生成元素策略的签名用于去重"""
+        """Fingerprint semantic locate rows for deduping."""
         strategy_type = strategy.get("strategy", "")
         conditions = strategy.get("conditions", {})
         
@@ -2529,9 +2312,7 @@ Primitive类型: {primitive}
         observation_text: str
     ) -> List[Dict[str, Any]]:
         """
-        从action序列推断必须存在的区域
-        
-        实现：从 accessibility tree 中提取区域信息
+        Infer coarse required_regions hints from the accessibility tree snapshot.
         """
         from .accessibility_tree_parser import AccessibilityTreeParser
         
@@ -2585,14 +2366,12 @@ Primitive类型: {primitive}
             return required_regions
             
         except Exception as e:
-            print(f"[Warning] 推断必需区域时出错: {e}")
+            print(f"[Warning] Failed while inferring required regions: {e}")
             return []
     
     def _check_modal_exists(self, observation_text: str) -> bool:
         """
-        检查是否有modal存在
-        
-        改进：使用更智能的检测方法，不仅检查关键词，还检查 accessibility tree 结构
+        Detect modal/dialog cues from accessibility snapshots (keywords + structure).
         """
         if not observation_text:
             return False
@@ -2635,7 +2414,7 @@ Primitive类型: {primitive}
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        使用LLM增强pre-condition
+        LLM-assisted pre-condition enrichment.
         """
         
         
@@ -2650,17 +2429,7 @@ Primitive类型: {primitive}
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        提取执行后验证条件
-        
-        Args:
-            action_sequence: action序列
-            trajectory: 完整轨迹
-            segment_start_idx: segment在trajectory中的起始索引
-            segment_end_idx: segment在trajectory中的结束索引
-            context: 上下文信息
-        
-        Returns:
-            Post-condition字典
+        Construct post-conditions from before/after observations.
         """
         
         pre_step = trajectory[segment_start_idx] if segment_start_idx < len(trajectory) else None
@@ -2720,7 +2489,7 @@ Primitive类型: {primitive}
                 post_condition, action_sequence, pre_obs_text, post_obs_text, context
             )
         except Exception as e:
-            print(f"[Warning] LLM增强post-condition失败: {e}")
+            print(f"[Warning] LLM post-condition augmentation failed: {e}")
         
         return post_condition
     
@@ -2733,13 +2502,7 @@ Primitive类型: {primitive}
         segment_start_idx: int
     ) -> List[Dict[str, Any]]:
         """
-        推断应该排除的状态
-        
-        排除状态是指不应该执行ActSpec的状态，例如：
-        - 错误页面
-        - 加载中页面
-        - 特定的错误URL
-        - 有错误消息显示的页面
+        Heuristic excluded_states (error splash, loading gates, etc.).
         """
         excluded_states = []
         
@@ -2754,8 +2517,8 @@ Primitive类型: {primitive}
             
             
             error_keywords = [
-                "error", "错误", "failed", "失败", "invalid", "无效",
-                "exception", "异常", "not found", "404", "500"
+                "error", "failed", "invalid",
+                "exception", "not found", "404", "500"
             ]
             observation_lower = observation_text.lower()
             
@@ -2781,7 +2544,7 @@ Primitive类型: {primitive}
                         break
             
             
-            loading_keywords = ["loading", "加载中", "please wait", "请稍候"]
+            loading_keywords = ["loading", "please wait"]
             has_loading = any(keyword in observation_lower for keyword in loading_keywords)
             if has_loading:
                 excluded_states.append({
@@ -2823,7 +2586,7 @@ Primitive类型: {primitive}
                         
                         if (child_role in ["alert", "alertdialog"] or
                             any(keyword in child_label or keyword in child_text 
-                                for keyword in ["invalid", "required", "错误", "无效"])):
+                                for keyword in ["invalid", "required"])):
                             excluded_states.append({
                                 "type": "form_validation_error",
                                 "description": "Form contains validation errors",
@@ -2832,12 +2595,12 @@ Primitive类型: {primitive}
                             break
             
         except Exception as e:
-            print(f"[Warning] 推断排除状态时出错: {e}")
+            print(f"[Warning] Failed while inferring excluded states: {e}")
         
         return excluded_states
     
     def _extract_url_pattern(self, url: str, context: Dict[str, Any]) -> str:
-        """从URL提取模式"""
+        """Normalize URL into a reusable pattern string."""
         
         url_pattern = context.get("url_pattern", "")
         if not url_pattern and url:
@@ -2853,12 +2616,7 @@ Primitive类型: {primitive}
         post_obs_text: str
     ) -> List[Dict[str, Any]]:
         """
-        检测新出现的元素
-        
-        放宽检测逻辑：
-        1. 只要element_id变化就认为是新元素（即使语义特征相同）
-        2. 只要完整签名不匹配就认为是新元素（不再检查部分签名）
-        3. 检测所有有element_id的元素，包括状态变化的元素
+        Diff helper: treat differing signatures or ids as new nodes post-action.
         """
         from .accessibility_tree_parser import AccessibilityTreeParser
         
@@ -2927,16 +2685,14 @@ Primitive类型: {primitive}
         
         except Exception as e:
             
-            print(f"[Warning] 检测新元素时出错: {e}")
+            print(f"[Warning] Failed while detecting new elements: {e}")
             return []
         
         return new_elements
     
     def _get_element_signature(self, element: Dict[str, Any]) -> str:
         """
-        生成元素的签名（用于比较）
-        
-        改进：添加更多信息以提高唯一性，包括 text 和 element_id
+        Stable signature tuple mixing role/label/text/id for comparisons.
         """
         role = element.get("role", "")
         label = element.get("label", "")
@@ -2953,9 +2709,7 @@ Primitive类型: {primitive}
     
     def _get_element_signature_partial(self, element: Dict[str, Any]) -> str:
         """
-        生成元素的部分签名（不包含element_id，用于检测相似元素）
-        
-        用于检测element_id变化但元素实际相同的情况
+        Signature without raw id (detect cosmetic id churn).
         """
         role = element.get("role", "")
         label = element.get("label", "")
@@ -2969,11 +2723,7 @@ Primitive类型: {primitive}
         post_obs_text: str
     ) -> List[Dict[str, Any]]:
         """
-        检测消失的元素
-        
-        放宽检测逻辑：
-        1. 只要完整签名不匹配就认为是消失的元素（不再检查部分签名）
-        2. 只要element_id不在post中就认为是消失的元素（即使语义特征可能相同）
+        Inverse diff for nodes removed after the segment.
         """
         from .accessibility_tree_parser import AccessibilityTreeParser
         
@@ -2982,7 +2732,7 @@ Primitive类型: {primitive}
             pre_tree = parser.parse(pre_obs_text)
             post_tree = parser.parse(post_obs_text)
         except Exception as e:
-            print(f"[Warning] 解析observation时出错: {e}")
+            print(f"[Warning] Failed parsing observation: {e}")
             return []
         
         
@@ -3032,17 +2782,16 @@ Primitive类型: {primitive}
     
     def _is_error_or_failure_text(self, text: str) -> bool:
         """
-        判断文本是否为错误/失败类提示，不应作为 post_condition.text_appears 的成功指标。
-        与 _infer_excluded_states 中的错误检测保持一致，避免将错误信息误记为“执行后出现的内容”。
+        True if snippet looks like an error banner (exclude from success text_appears).
         """
         if not text or not text.strip():
             return False
         text_lower = text.strip().lower()
         error_keywords = [
-            "error", "错误", "failed", "失败", "invalid", "无效",
-            "exception", "异常", "not found", "404", "500",
-            "loading", "加载中", "please wait", "请稍候",
-            "synchronize", "synchronization", "magento business intelligence",  
+            "error", "failed", "invalid",
+            "exception", "not found", "404", "500",
+            "loading", "please wait",
+            "synchronize", "synchronization", "magento business intelligence",
         ]
         return any(kw in text_lower for kw in error_keywords)
     
@@ -3051,14 +2800,7 @@ Primitive类型: {primitive}
         pre_obs_text: str,
         post_obs_text: str
     ) -> List[Dict[str, Any]]:
-        """
-        检测新出现的文本
-        
-        放宽检测逻辑：
-        1. 检测所有文本变化，不仅仅是关键词
-        2. 提取执行前后observation中的所有文本元素，比较差异
-        3. 记录所有新增的文本内容
-        """
+        """Diff parsed text nodes between pre/post accessibility snapshots."""
         new_texts = []
         
         if not pre_obs_text or not post_obs_text:
@@ -3186,7 +2928,7 @@ Primitive类型: {primitive}
                         seen_texts.add(text_lower)
         
         except Exception as e:
-            print(f"[Warning] 检测新文本时出错: {e}")
+            print(f"[Warning] Failed while detecting new texts: {e}")
             
             try:
                 import re
@@ -3221,9 +2963,7 @@ Primitive类型: {primitive}
         post_obs_text: str
     ) -> List[Dict[str, Any]]:
         """
-        检测区域更新
-        
-        实现：比较执行前后的区域状态，检测区域内容的变化
+        Compare landmark regions between observations for coarse updates.
         """
         from .accessibility_tree_parser import AccessibilityTreeParser
         
@@ -3320,7 +3060,7 @@ Primitive类型: {primitive}
             return region_updates
             
         except Exception as e:
-            print(f"[Warning] 检测区域更新时出错: {e}")
+            print(f"[Warning] Failed while detecting region updates: {e}")
             return []
     
     def _detect_modal_changes(
@@ -3329,9 +3069,7 @@ Primitive类型: {primitive}
         post_obs_text: str
     ) -> List[Dict[str, Any]]:
         """
-        检测modal变化
-        
-        实现：比较执行前后的 modal 状态，检测 modal 的出现、消失或内容变化
+        Track modal/dialog appearance between observations.
         """
         from .accessibility_tree_parser import AccessibilityTreeParser
         
@@ -3434,7 +3172,7 @@ Primitive类型: {primitive}
             return modal_changes
             
         except Exception as e:
-            print(f"[Warning] 检测modal变化时出错: {e}")
+            print(f"[Warning] Failed while detecting modal changes: {e}")
             return []
     
     def _llm_enhance_post_condition(
@@ -3445,12 +3183,7 @@ Primitive类型: {primitive}
         post_obs_text: str,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        使用LLM增强post-condition
-        
-        分析action执行前后的页面状态变化，提取执行后验证条件。
-        如果基础检测方法没有检测到变化，LLM会尝试从语义层面识别状态变化。
-        """
+        """Let an LLM refine post_condition JSON using pre/post observation snippets."""
         import json
         
         
@@ -3477,98 +3210,39 @@ Primitive类型: {primitive}
         pre_obs_snippet = pre_obs_text[:2000] if len(pre_obs_text) > 2000 else pre_obs_text
         post_obs_snippet = post_obs_text[:2000] if len(post_obs_text) > 2000 else post_obs_text
         
-        system_prompt = """你是一个状态变化分析专家。分析action执行前后的页面状态变化，提取执行后验证条件（post-condition）。
+        system_prompt = """You refine JSON post-conditions for web automations.
 
-Post-condition应该包括：
-1. URL/route变化（如果有导航到新页面）
-2. 新元素出现（确认操作成功的元素、新出现的按钮、链接等）
-3. 元素消失（如loading modal、临时提示等）
-4. 重要文本出现（如确认消息、错误提示、成功提示等）
-5. 区域更新（form、table、main区域等的内容变化）
-6. Modal变化（打开、关闭、更新）
+Cover URL changes, newly visible controls, disappearing loaders, important text, region refreshes, modal transitions.
+Prefer semantic roles/labels/text—not bare DOM ids. Skip noise; focus on reusable signals. JSON only."""
 
-注意：
-- 只记录重要的、可复用的状态变化
-- 避免过于具体的变化（如具体的element_id），使用语义特征（role、label、text）
-- 如果操作后页面基本没有变化（如只是切换了选中状态），可以只记录URL变化或保持为空
-- 优先识别操作成功的标志（如新页面、确认消息、新功能区域出现等）
-- 如果检测到错误状态，可以在text_appears中记录错误文本
-
-返回JSON格式的post-condition，格式如下：
-{
-  "url_change": {
-    "type": "stay" | "navigate",
-    "pattern": "URL模式（如果是navigate）"
-  },
-  "element_appears": [
-    {
-      "strategy": "semantic",
-      "conditions": {
-        "role": "元素角色",
-        "label": "元素标签",
-        "text": "元素文本"
-      },
-      "required": true
-    }
-  ],
-  "element_disappears": [
-    {
-      "strategy": "semantic",
-      "conditions": {
-        "role": "元素角色",
-        "label": "元素标签",
-        "text": "元素文本"
-      }
-    }
-  ],
-  "text_appears": [
-    {
-      "text": "出现的文本内容",
-      "required": true
-    }
-  ],
-  "region_updates": [
-    {
-      "type": "appeared" | "updated" | "disappeared",
-      "role": "区域角色（main、complementary等）",
-      "description": "描述"
-    }
-  ],
-  "modal_changes": [
-    {
-      "type": "opened" | "closed" | "updated",
-      "role": "modal角色",
-      "label": "modal标签",
-      "description": "描述"
-    }
-  ]
-}"""
-        
-        user_prompt = f"""上下文：
+        user_prompt = f"""Context:
 - Site: {context.get('site', 'unknown')}
 - Page: {context.get('page', 'unknown')}
 - URL Pattern: {context.get('url_pattern', '/')}
 
-Action序列：
+Actions:
 {action_summary_str}
 
-执行前页面观察（Accessibility Tree文本，前2000字符）：
+Pre observation (first 2000 chars):
 {pre_obs_snippet}
 
-执行后页面观察（Accessibility Tree文本，前2000字符）：
+Post observation (first 2000 chars):
 {post_obs_snippet}
 
-当前Post-condition（基础检测结果）：
+Baseline post-condition JSON:
 {json.dumps(post_condition, indent=2, ensure_ascii=False)}
 
-请分析执行前后的状态变化，完善post-condition。确保：
-1. 包含所有重要的状态变化
-2. 识别确认操作成功的标志（如新元素、文本、URL变化等）
-3. 识别错误状态的标志（如果有）
-4. 使用语义特征而不是具体的element_id（提高复用性）
-5. 如果基础检测已经识别了一些变化，可以在此基础上补充
+Improve the JSON; keep schema:
+{{
+  "url_change": {{"type": "stay|navigate", "pattern": "optional glob"}},
+  "element_appears": [...],
+  "element_disappears": [...],
+  "text_appears": [...],
+  "region_updates": [...],
+  "modal_changes": [...]
+}}
 
-只返回JSON格式的post-condition，不要其他文字。"""
+JSON only, no commentary."""
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -3614,11 +3288,11 @@ Action序列：
             return enhanced_post_condition
             
         except json.JSONDecodeError as e:
-            print(f"[Warning] LLM返回的post-condition不是有效的JSON: {e}")
-            print(f"[Warning] LLM响应: {response[:500]}")
+            print(f"[Warning] LLM post-condition response was not valid JSON: {e}")
+            print(f"[Warning] LLM response snippet: {response[:500]}")
             return post_condition
         except Exception as e:
-            print(f"[Warning] LLM增强post-condition失败: {e}")
+            print(f"[Warning] LLM post-condition augmentation failed: {e}")
             return post_condition
     
     def _find_action_in_trajectory(
@@ -3627,17 +3301,7 @@ Action序列：
         trajectory: List[Dict[str, Any]],
         start_idx: int
     ) -> Optional[int]:
-        """
-        在trajectory中查找对应的action
-        
-        Args:
-            action_str: action字符串
-            trajectory: 完整轨迹
-            start_idx: 搜索的起始索引
-        
-        Returns:
-            找到的trajectory索引，如果找不到则返回None
-        """
+        """Scan trajectory forward from start_idx for a matching primitive string."""
         
         search_range = min(start_idx + 20, len(trajectory))
         

@@ -1,5 +1,5 @@
 """
-ActSpec库管理器：保存、加载、查询ActSpec
+ActSpec library: save, load, query specs and negative constraints.
 """
 
 import json
@@ -15,15 +15,10 @@ from .negative_constraint_utils import (
 
 
 class ActSpecLibrary:
-    """ActSpec库管理器"""
-    
+    """Filesystem-backed ActSpec store."""
+
     def __init__(self, base_path: str = "temp_library"):
-        """
-        初始化ActSpec库管理器
-        
-        Args:
-            base_path: 库的基础路径
-        """
+        """Create library root at base_path."""
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
     
@@ -32,16 +27,7 @@ class ActSpecLibrary:
         actspec: Dict[str, Any],
         library_path: Optional[str] = None
     ) -> str:
-        """
-        保存ActSpec到库
-        
-        Args:
-            actspec: ActSpec字典
-            library_path: 库路径，如果为None则使用时间戳目录
-        
-        Returns:
-            保存的文件路径
-        """
+        """Persist actspec JSON; optional explicit library_path or new timestamp dir."""
         
         if library_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -68,15 +54,7 @@ class ActSpecLibrary:
         return str(file_path)
     
     def load_library(self, library_path: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        加载整个库
-        
-        Args:
-            library_path: 库路径，如果为None则加载最新的时间戳目录
-        
-        Returns:
-            ActSpec列表
-        """
+        """Load non-disabled specs from index.json (latest timestamp dir if path omitted)."""
         if library_path is None:
             
             lib_path = self._get_latest_library_path()
@@ -125,16 +103,7 @@ class ActSpecLibrary:
         context: Dict[str, Any],
         library_path: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """
-        根据上下文查询匹配的ActSpec
-        
-        Args:
-            context: 上下文信息（site, page, url_pattern等）
-            library_path: 库路径，如果为None则使用最新的时间戳目录
-        
-        Returns:
-            匹配的ActSpec列表
-        """
+        """Filter library entries by site/page/url_pattern/action_history_prefix."""
         if library_path is None:
             lib_path = self._get_latest_library_path()
         else:
@@ -221,25 +190,11 @@ class ActSpecLibrary:
         return actspecs
     
     def _get_library_path(self, base_path: Path, timestamp: str) -> Path:
-        """
-        获取库路径
-        
-        Args:
-            base_path: 基础路径
-            timestamp: 时间戳
-        
-        Returns:
-            库路径
-        """
+        """base_path / timestamp directory."""
         return base_path / timestamp
     
     def _get_latest_library_path(self) -> Path:
-        """
-        获取最新的库路径（按时间戳排序）
-        
-        Returns:
-            最新的库路径
-        """
+        """Newest %Y%m%d_%H%M%S child under base_path, else base_path."""
         if not self.base_path.exists():
             return self.base_path
         
@@ -268,14 +223,7 @@ class ActSpecLibrary:
         library_path: Path,
         filename: str
     ) -> None:
-        """
-        更新或追加index.json
-        
-        Args:
-            actspec: ActSpec字典
-            library_path: 库路径
-            filename: 文件名
-        """
+        """Upsert index.json entry for saved actspec file."""
         index_file = library_path / "index.json"
         
         
@@ -312,15 +260,7 @@ class ActSpecLibrary:
             json.dump(index, f, indent=2, ensure_ascii=False)
     
     def load_negative_constraints(self, library_path: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        加载负约束库
-        
-        Args:
-            library_path: 库路径，如果为None则使用最新的时间戳目录
-        
-        Returns:
-            负约束列表
-        """
+        """Load all negative constraint JSON files referenced by negative_constraints_index.json."""
         if library_path is None:
             
             lib_path = self._get_latest_library_path()
@@ -354,16 +294,7 @@ class ActSpecLibrary:
         constraint: Dict[str, Any],
         library_path: Optional[str] = None
     ) -> str:
-        """
-        保存负约束到库
-        
-        Args:
-            constraint: 负约束字典
-            library_path: 库路径，如果为None则使用时间戳目录
-        
-        Returns:
-            保存的文件路径
-        """
+        """Write one negative constraint under negative_constraints/ and update index."""
         
         if library_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -399,14 +330,7 @@ class ActSpecLibrary:
         library_path: Path,
         filename: str
     ) -> None:
-        """
-        更新或追加negative_constraints_index.json
-        
-        Args:
-            constraint: 负约束字典
-            library_path: 库路径
-            filename: 文件名（相对于库路径）
-        """
+        """Upsert negative_constraints_index.json."""
         index_file = library_path / "negative_constraints_index.json"
         
         
@@ -446,11 +370,7 @@ class ActSpecLibrary:
     
 
     def _resolve_library_path(self, library_path: Optional[str] = None) -> Path:
-        """
-        解析并返回实际的库路径。
-        - 如果传入的是时间戳子目录，直接使用；
-        - 否则回退到当前 base_path 的最新时间戳子目录。
-        """
+        """Use explicit library_path or fall back to latest timestamp directory."""
         if library_path:
             lib_path = Path(library_path)
         else:
@@ -461,7 +381,7 @@ class ActSpecLibrary:
         self,
         lib_path: Path,
     ) -> Tuple[Path, list]:
-        """加载给定库路径下的 index.json。"""
+        """Read index.json or empty list."""
         index_file = lib_path / "index.json"
         if not index_file.exists():
             return index_file, []
@@ -476,12 +396,7 @@ class ActSpecLibrary:
         convert_to_negative_constraints: bool = True,
     ) -> None:
         """
-        批量更新多个 ActSpec 的统计信息。
-
-        Args:
-            stats: 形如 {action_id: {"usage_count": x, "success_count": y, "fail_count": z}} 的字典，
-                   所有值为“本次评估新增的增量”，不是绝对值。
-            library_path: 库路径；若为 None，则使用最近一次的库目录。
+        Apply incremental usage/success/fail counters per action_id; optional auto negative-constraint conversion.
         """
         if not stats:
             return
@@ -562,10 +477,10 @@ class ActSpecLibrary:
                         
                         self.save_negative_constraint(constraint, str(lib_path))
                         metadata["converted_to_negative_constraint"] = True
-                        print(f"[负约束] ActSpec {actspec.get('action_id', 'unknown')} 多次失败已被禁用，"
-                              f"自动转换为负约束 {constraint.get('constraint_id', 'unknown')}")
+                        print(f"[NegativeConstraint] ActSpec {actspec.get('action_id', 'unknown')} disabled after failures; "
+                              f"converted to negative constraint {constraint.get('constraint_id', 'unknown')}")
                 except Exception as e:
-                    print(f"[负约束] 将 ActSpec 转换为负约束失败 ({actspec.get('action_id', 'unknown')}): {e}")
+                    print(f"[NegativeConstraint] Failed to convert ActSpec to negative constraint ({actspec.get('action_id', 'unknown')}): {e}")
 
             actspec["metadata"] = metadata
 
@@ -586,23 +501,7 @@ class ActSpecLibrary:
         library_path: Optional[str] = None,
     ) -> Optional[float]:
         """
-        根据 Post 条件验证结果更新单个 ActSpec 的置信度。
-        仅用于排序：置信度只影响备选列表顺序，不触发淘汰（淘汰仅由 update_stats_batch 的统计规则触发）。
-        
-        更新规则：
-        - Post 成功：s(α) ← s(α) + 1
-        - Post 失败：s(α) ← s(α) - λ
-        - 上界裁剪：s(α) ≤ s_max，下界保护 s(α) ≥ 0
-        
-        Args:
-            action_id: ActSpec 的 action_id
-            post_success: Post 条件是否通过（True=成功，False=失败）
-            s_max: 置信度上界（默认 10.0）
-            lambda_penalty: 失败惩罚系数（默认 2.0）
-            library_path: 库路径；若为 None，则使用最近一次的库目录
-        
-        Returns:
-            更新后的置信度值，如果 ActSpec 不存在则返回 None
+        Bump confidence from post-condition outcome (ranking only; disabling uses update_stats_batch).
         """
         lib_path = self._resolve_library_path(library_path)
         if not lib_path.exists():
@@ -667,18 +566,7 @@ class ActSpecLibrary:
         lambda_penalty: float = 2.0,
         library_path: Optional[str] = None,
     ) -> Dict[str, float]:
-        """
-        批量更新多个 ActSpec 的置信度。
-        
-        Args:
-            updates: 形如 {action_id: post_success} 的字典，post_success 为 True/False
-            s_max: 置信度上界（默认 10.0）
-            lambda_penalty: 失败惩罚系数（默认 2.0）
-            library_path: 库路径；若为 None，则使用最近一次的库目录
-        
-        Returns:
-            形如 {action_id: new_confidence} 的字典，包含更新后的置信度值
-        """
+        """Call update_confidence for many action_ids; returns {id: new_score}."""
         results = {}
         for action_id, post_success in updates.items():
             new_confidence = self.update_confidence(
@@ -700,7 +588,7 @@ class ActSpecLibrary:
         failure_reason: str = "",
         runtime_context: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
-        """将失败 ActSpec 立即转为负约束并落库。"""
+        """Persist a negative constraint from a failed runtime ActSpec."""
         if not isinstance(actspec, dict):
             return None
         constraint = _build_negative_constraint_from_failed_trace_struct(
@@ -724,10 +612,7 @@ def _history_prefix_matches(
     prefix: List[str],
     history: List[str],
 ) -> bool:
-    """
-    检查 history 中是否包含 prefix 作为连续子序列。
-    prefix 与 history 均为动作类型字符串（小写）。
-    """
+    """True if prefix occurs as a contiguous subsequence in history (lowercase verbs)."""
     if not prefix:
         return True
     if not history:
@@ -743,10 +628,7 @@ def _history_prefix_matches(
 
 
 def _actspec_id_to_constraint_id(action_id: str) -> str:
-    """
-    将 ActSpec 的 action_id 转换为负约束的 constraint_id。
-    规则：前缀替换 unknown. -> constraint.，否则加上 constraint. 前缀。
-    """
+    """Map action_id to constraint_id (unknown.* -> constraint.*, else prefix constraint.)."""
     if not action_id:
         return "constraint.unknown"
     if action_id.startswith("unknown."):
@@ -759,14 +641,7 @@ def _actspec_id_to_constraint_id(action_id: str) -> str:
 def _build_negative_constraint_from_actspec_struct(
     actspec: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    将一个已存在的 ActSpec 结构（通常是被禁用的多次失败 ActSpec）
-    转换为一个结构上兼容的负约束。
-
-    注意：这里没有具体失败片段的轨迹，只能保守地：
-    - 直接复用 ActSpec 的 context / pre_condition / plan / action_history_prefix；
-    - constraint_subtype 置为 unspecified。
-    """
+    """Conservative struct-only conversion when no failure trace (subtype unspecified)."""
     action_id = actspec.get("action_id", "")
     context = actspec.get("context", {}) or {}
     pre_condition = actspec.get("pre_condition", {}) or {}
@@ -774,7 +649,7 @@ def _build_negative_constraint_from_actspec_struct(
     action_history_prefix = actspec.get("action_history_prefix", []) or []
 
     constraint_id = _actspec_id_to_constraint_id(action_id)
-    failure_reason = actspec.get("failure_reason") or "ActSpec 多次失败，被禁用后自动转换为负约束。"
+    failure_reason = actspec.get("failure_reason") or "ActSpec disabled after repeated failures; auto negative constraint."
 
     constraint = {
         "constraint_id": constraint_id,
@@ -807,10 +682,7 @@ def _build_negative_constraint_from_failed_trace_struct(
     failure_reason: str,
     runtime_context: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    依据失败轨迹信号构建负约束（贴近论文 Algorithm 3）：
-    c = <phi(Delta), pi(a,tgt)>.
-    """
+    """Build negative constraint from failed trace signals (Algorithm 3 style)."""
     action_id = actspec.get("action_id", "")
     context = dict(actspec.get("context", {}) or {})
     context.update(runtime_context or {})
@@ -882,27 +754,15 @@ def _build_negative_constraint_from_failed_trace_struct(
 
 
 class NegativeConstraintFilter:
-    """负约束过滤器，用于在planning阶段过滤被禁止的action"""
-    
+    """Drop forbidden plans / specs during planning or primitive execution."""
+
     def __init__(self, constraints: List[Dict[str, Any]]):
-        """
-        初始化负约束过滤器
-        
-        Args:
-            constraints: 负约束列表
-        """
+        """constraints: loaded negative constraint dicts."""
         self.constraints = constraints
 
     def _constraint_applies(self, constraint: Dict[str, Any], context: Dict[str, Any]) -> bool:
         """
-        检查负约束是否适用于当前上下文。
-
-        规则：
-        1. 先做上下文匹配；
-        2. 再按“包含匹配”检查当前动作历史：
-           - 若约束带有非空 action_history_prefix，则当前已执行完的历史动作类型序列中，
-             必须包含该前缀作为连续子序列才视为匹配；
-           - 若约束未带该字段或为空列表，则视为对历史无要求，仅依赖上下文。
+        Context match, optional pre_condition on env, then optional action_history_prefix subsequence match.
         """
         if not self._context_matches(
             constraint.get("context", {}), context, constraint.get("constraint_subtype", "unspecified")
@@ -927,7 +787,7 @@ class NegativeConstraintFilter:
             except Exception as e:
                 
                 constraint_id = constraint.get("constraint_id", "unknown")
-                print(f"[负约束] pre-condition 检查出错 (constraint_id={constraint_id}): {e}，保守保留该约束继续匹配")
+                print(f"[NegativeConstraint] pre-condition check error (constraint_id={constraint_id}): {e}; keeping constraint for matching")
 
         
         prefix = constraint.get("action_history_prefix")
@@ -945,16 +805,7 @@ class NegativeConstraintFilter:
         plan: List[Dict[str, Any]],
         context: Dict[str, Any]
     ) -> bool:
-        """
-        检查给定的plan是否被负约束禁止
-        
-        Args:
-            plan: 要检查的plan（primitive序列）
-            context: 上下文信息
-        
-        Returns:
-            如果被禁止，返回True
-        """
+        """True if any applying constraint forbids this exact plan prefix."""
         for constraint in self.constraints:
             if self._constraint_applies(constraint, context):
                 if self._plan_matches(constraint.get("forbidden_plan", []), plan):
@@ -966,16 +817,7 @@ class NegativeConstraintFilter:
         actspec: Dict[str, Any],
         context: Dict[str, Any]
     ) -> bool:
-        """
-        检查给定的ActSpec是否被负约束禁止
-        
-        Args:
-            actspec: 要检查的ActSpec
-            context: 上下文信息
-        
-        Returns:
-            如果被禁止，返回True
-        """
+        """True if this ActSpec's plan is forbidden."""
         plan = actspec.get("plan", [])
         return self.is_forbidden(plan, context)
     
@@ -984,23 +826,14 @@ class NegativeConstraintFilter:
         actspecs: List[Dict[str, Any]],
         context: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """
-        过滤被负约束禁止的ActSpec
-        
-        Args:
-            actspecs: ActSpec列表
-            context: 上下文信息
-        
-        Returns:
-            过滤后的ActSpec列表
-        """
+        """Remove specs whose plans hit a negative constraint."""
         filtered = []
         for actspec in actspecs:
             if not self.is_actspec_forbidden(actspec, context):
                 filtered.append(actspec)
             else:
                 constraint_id = self._find_matching_constraint_id(actspec, context)
-                print(f"[负约束] ActSpec {actspec.get('action_id')} 被负约束禁止 (constraint: {constraint_id})")
+                print(f"[NegativeConstraint] ActSpec {actspec.get('action_id')} blocked (constraint: {constraint_id})")
         return filtered
     
     def _context_matches(
@@ -1009,7 +842,7 @@ class NegativeConstraintFilter:
         current_context: Dict[str, Any],
         constraint_subtype: str = "",
     ) -> bool:
-        """检查上下文是否匹配。对 readiness 约束且含 unstable_state 时，仅在当前也为未稳定状态时匹配。"""
+        """Site/page match; readiness with unstable_state requires matching unstable signal."""
         
         constraint_site = constraint_context.get("site", "unknown")
         constraint_page = constraint_context.get("page", "unknown")
@@ -1037,10 +870,7 @@ class NegativeConstraintFilter:
         forbidden_plan: List[Dict[str, Any]],
         plan: List[Dict[str, Any]]
     ) -> bool:
-        """检查 plan 是否匹配被禁止的 plan。
-        阶段1改造：对 CLICK/TYPE/HOVER 优先做 element_id 精确匹配；
-        若 forbidden_plan 首步为占位符（无具体 element_id），planning 阶段不采用该约束，返回 False。
-        """
+        """Prefix match against forbidden_plan; placeholder-only first steps do not apply at plan time."""
         if len(plan) < len(forbidden_plan):
             return False
         if not forbidden_plan:
@@ -1068,7 +898,7 @@ class NegativeConstraintFilter:
         actspec: Dict[str, Any],
         context: Dict[str, Any]
     ) -> str:
-        """查找匹配的负约束ID"""
+        """constraint_id that blocked this actspec, else unknown."""
         plan = actspec.get("plan", [])
         for constraint in self.constraints:
             if self._constraint_applies(constraint, context):
@@ -1077,11 +907,7 @@ class NegativeConstraintFilter:
         return "unknown"
 
     def get_forbidden_element_ids_for_observation(self, context: Dict[str, Any]) -> Set[str]:
-        """
-        获取在 observe 阶段应隐藏的 element_id 集合。
-        仅当 context + action_history_prefix 匹配且 forbidden_plan 中含具体 element_id 时纳入。
-        用于在 observation 返回前将失败过的候选元素从 DOM 中隐藏。
-        """
+        """Element ids to prune from observation when constraints apply (concrete ids only)."""
         forbidden_ids: Set[str] = set()
         for constraint in self.constraints:
             if not self._constraint_applies(constraint, context):
@@ -1101,21 +927,7 @@ class NegativeConstraintFilter:
         action_cmd: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Tuple[bool, Optional[Dict[str, Any]]]:
-        """
-        检查单个primitive action是否被负约束禁止
-        
-        Args:
-            action_cmd: primitive action命令字典（包含action_type, element_id等）
-            context: 上下文信息（site, page, url）
-        
-        Returns:
-            (是否被禁止, 匹配的负约束信息) 元组
-            如果被禁止，返回 (True, constraint_info)，其中 constraint_info 包含：
-            - constraint_id: 负约束ID
-            - failure_reason: 失败原因
-            - description: 描述信息
-            如果未被禁止，返回 (False, None)
-        """
+        """(forbidden, info) for a single primitive action_cmd."""
         
         plan_step = self._action_cmd_to_plan_step(action_cmd)
         if not plan_step:
@@ -1138,7 +950,7 @@ class NegativeConstraintFilter:
                 
                 constraint_info = {
                     "constraint_id": constraint.get("constraint_id", "unknown"),
-                    "failure_reason": constraint.get("description", {}).get("failure_reason", "该操作被负约束禁止"),
+                    "failure_reason": constraint.get("description", {}).get("failure_reason", "Action forbidden by negative constraint"),
                     "description": constraint.get("description", {})
                 }
                 return (True, constraint_info)
@@ -1146,15 +958,7 @@ class NegativeConstraintFilter:
         return (False, None)
     
     def _action_cmd_to_plan_step(self, action_cmd: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        将 action_cmd 转换为 plan step 格式
-        
-        Args:
-            action_cmd: primitive action命令字典
-        
-        Returns:
-            plan step 字典，如果无法转换则返回 None
-        """
+        """Map browser_env action_cmd dict to plan step shape."""
         
         
         
@@ -1210,16 +1014,7 @@ class NegativeConstraintFilter:
         forbidden_step: Dict[str, Any],
         plan_step: Dict[str, Any]
     ) -> bool:
-        """
-        检查 plan step 是否匹配被禁止的 step
-        
-        Args:
-            forbidden_step: 被禁止的 step
-            plan_step: 要检查的 step
-        
-        Returns:
-            如果匹配，返回 True
-        """
+        """Structural equality for forbidden vs candidate step."""
         
         forbidden_primitive = forbidden_step.get("primitive", "").upper()
         plan_primitive = plan_step.get("primitive", "").upper()
@@ -1331,13 +1126,5 @@ class NegativeConstraintFilter:
         return True
     
     def _is_parameter_placeholder(self, value: str) -> bool:
-        """
-        检查是否是参数占位符（如 {{param_name}}）
-        
-        Args:
-            value: 要检查的值
-        
-        Returns:
-            如果是参数占位符，返回 True
-        """
+        """True for {{param}} placeholders."""
         return isinstance(value, str) and value.startswith("{{") and value.endswith("}}")

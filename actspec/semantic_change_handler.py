@@ -1,5 +1,6 @@
 """
-语义变化处理：step 失败且自动修复穷尽（或多候选）时，判定「不可视为合理中间态」并可选调用 LLM 重写后续 plan。
+Semantic-change handling: after a failed step (repair exhausted or multiple locate candidates),
+decide whether the state cannot be a valid intermediate state and optionally LLM-rewrite the rest of the plan.
 """
 
 import json
@@ -38,7 +39,7 @@ def _get_observation_processor_from_env(env: Any) -> Any:
 
 
 def _get_observation_text_from_env(env: Any) -> str:
-    """获取当前页面 observation 文本。兼容 obs 为 str 或 dict、text 为 str/list。"""
+    """Observation text from env; supports str obs or dict with text str/list."""
     if env is None:
         return ""
     if hasattr(env, "observation"):
@@ -61,7 +62,7 @@ def _get_observation_text_from_env(env: Any) -> str:
 
 ERROR_LOGIN_CAPTCHA_EMPTY_PATTERNS = [
     "/error", "/login", "/captcha", "/signin",
-    "error", "login", "captcha", "暂无内容", "not found", "404",
+    "error", "login", "captcha", "no content", "not found", "404",
 ]
 
 
@@ -71,8 +72,8 @@ def cannot_consider_valid_intermediate_state(
     env: Any,
 ) -> bool:
     """
-    可执行定义（v1）：仅当以下至少一条成立时返回 True，才允许进入 semantic change handler。
-    否则视为可能 transient execution error，不触发 LLM。
+    Gate (v1): return True only if at least one rule fires so we may enter semantic-change handling.
+    Otherwise treat as a possible transient execution error and skip the LLM.
     """
     plan = actspec.get("plan", [])
     if current_step_idx >= len(plan):
@@ -136,7 +137,7 @@ def cannot_consider_valid_intermediate_state(
 
 
 def _infer_provider_from_model(model: str, default: str = "google") -> str:
-    """从模型名推断 provider：google/xxx -> google，openai/xxx -> openai，anthropic/ 或 claude/ -> anthropic，否则返回 default。"""
+    """Infer LLM provider prefix from model id (google/, openai/, claude/, ...); else default."""
     if not model or not isinstance(model, str):
         return default
     m = model.strip().lower()
@@ -160,9 +161,8 @@ def _call_llm_rewrite_plan(
     env: Any,
 ) -> Optional[List[Dict[str, Any]]]:
     """
-    调用 LLM 从当前 step 重写后续 plan。使用 config.yaml 中的 llm_provider 与
-    models.agent_actor（与 Actor 一致）；provider 根据模型名自动识别（如 google/xxx -> google），
-    默认为 google，通过 llms.call_llm 调用；若无可用配置或调用失败则返回 None。
+    LLM-rewrite remaining plan steps from current_step_idx.
+    Uses unified config agent_actor model and llms.call_llm; returns None if setup or call fails.
     """
     lm_cfg = None
     try:
@@ -175,7 +175,7 @@ def _call_llm_rewrite_plan(
             unified = get_config(str(config_dir))
             model = unified.get_model("agent_actor", "default")
         except Exception as e:
-            print(f"[ActSpec] LLM 重写跳过: 加载统一配置失败 — {type(e).__name__}: {e}")
+            print(f"[ActSpec] LLM rewrite skipped: failed to load unified config — {type(e).__name__}: {e}")
             return None
         if not model:
             model = "google/gemini-2.5-flash"
@@ -205,7 +205,7 @@ def _call_llm_rewrite_plan(
             gen_config=gen_config,
         )
     except Exception as e:
-        print(f"[ActSpec] LLM 重写跳过: 构建 LMConfig 失败 — {type(e).__name__}: {e}")
+        print(f"[ActSpec] LLM rewrite skipped: failed to build LMConfig — {type(e).__name__}: {e}")
         return None
 
     plan = actspec.get("plan", [])
@@ -237,7 +237,7 @@ def _call_llm_rewrite_plan(
             if isinstance(new_remaining, list):
                 return new_remaining
     except Exception as e:
-        print(f"[ActSpec] LLM 重写失败（call_llm 或解析）: {type(e).__name__}: {e}")
+        print(f"[ActSpec] LLM rewrite failed (call_llm or parse): {type(e).__name__}: {e}")
     return None
 
 
@@ -252,8 +252,8 @@ def handle_semantic_change(
     max_llm_adjustments: int,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[int], int]:
     """
-    语义变化时：多候选直接尝试 LLM；其他失败仅当不可视为合理中间态时才调用 LLM。
-    返回 (new_actspec_or_none, start_step_idx_or_none, new_llm_adjustment_count)。
+    On semantic change: multiple locate candidates may invoke LLM; other failures only if
+    cannot_consider_valid_intermediate_state. Returns (new_actspec, start_step_idx, llm_adjustment_count).
     """
     plan = actspec.get("plan", [])
     if llm_adjustment_count >= max_llm_adjustments:

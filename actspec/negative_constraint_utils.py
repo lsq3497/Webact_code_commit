@@ -1,10 +1,10 @@
 """
-负约束工具：论文定义的两类负约束常量与从 trace 推断子类型的逻辑，
-以及用于生成/匹配动作历史前缀指纹（action_history_prefix）的辅助函数。
+Negative-constraint helpers: subtype constants, heuristics from traces,
+and action_history_prefix fingerprint helpers.
 
-两类负约束（保守抽取）：
-1. Readiness Constraint：页面尚未 ready 时就执行了动作 → 禁止在该未稳定状态下执行 π(a, tgt)
-2. Disambiguation Constraint：多个相似 target 反复选错 → 禁止在该上下文中使用某类 target descriptor
+Two conservative constraint families:
+1. Readiness — acted before the page was stable; forbid π(a, tgt) in that unstable context.
+2. Disambiguation — repeated wrong picks among similar targets; forbid certain descriptors in that context.
 """
 
 from typing import Any, Dict, List, Optional
@@ -13,10 +13,7 @@ MAX_ACTION_HISTORY_PREFIX_LEN = 3
 
 
 def _normalize_action_type_from_str(action: Any) -> Optional[str]:
-    """
-    从轨迹中的 action 字符串解析出标准化的动作类型（小写）。
-    例如 "click [79]" -> "click", "goto url=..." -> "goto"。
-    """
+    """Parse lowercase verb from an action string, e.g. \"click [79]\" -> \"click\"."""
     if not action:
         return None
     s = str(action).strip().lower()
@@ -43,11 +40,8 @@ def build_action_history_prefix(
     max_prefix_len: int = MAX_ACTION_HISTORY_PREFIX_LEN,
 ) -> List[str]:
     """
-    从完整轨迹中提取片段前最多 N 步的动作类型序列，作为 action_history_prefix。
-
-    - 仅使用动作类型（click/type/scroll/goto/go_back/go_forward/note/stop 等）的顺序信息；
-    - 不记录 element_id/text/url 等参数；
-    - 若 segment_start <= 1，则视为轨迹开头，不记录历史（返回空列表）。
+    Last N action-type tokens before segment_start (order only, no ids/text/urls).
+    Empty when segment_start <= 1 (trace start).
     """
     if not trajectory or segment_start is None:
         return []
@@ -88,7 +82,7 @@ VALID_CONSTRAINT_SUBTYPES = frozenset({
 
 
 def normalize_constraint_subtype(value: Any) -> str:
-    """将任意值规范为有效的 constraint_subtype。"""
+    """Normalize arbitrary input to a valid constraint_subtype."""
     if value in VALID_CONSTRAINT_SUBTYPES:
         return value
     s = (value or "").strip().lower()
@@ -107,19 +101,13 @@ def infer_constraint_subtype_from_trajectory(
     actions_in_segment: List[str],
 ) -> str:
     """
-    从轨迹片段推断负约束子类型（保守：仅当信号明确时返回 readiness/disambiguation）。
-
-    用于在离线从 trace 生成负约束时，在 LLM 返回 unspecified 或未区分时做启发式补充。
+    Heuristic subtype when LLM leaves constraint unspecified.
 
     Args:
-        trajectory: 完整轨迹，每步含 url, action, observation 等
-        segment_start: 片段起始步（含）
-        segment_end: 片段结束步（含）
-        failure_reason: 已判定的失败原因文本
-        actions_in_segment: 片段内标准化后的 action 字符串列表
-
-    Returns:
-        CONSTRAINT_SUBTYPE_READINESS | CONSTRAINT_SUBTYPE_DISAMBIGUATION | CONSTRAINT_SUBTYPE_UNSPECIFIED
+        trajectory: Full trace rows (url, action, observation, ...).
+        segment_start / segment_end: Inclusive slice indices.
+        failure_reason: Known failure text.
+        actions_in_segment: Normalized action strings inside the segment.
     """
     if not trajectory or segment_start < 0 or segment_end >= len(trajectory):
         return CONSTRAINT_SUBTYPE_UNSPECIFIED
@@ -150,8 +138,8 @@ def infer_constraint_subtype_from_trajectory(
         for a in actions_lower
     )
     readiness_keywords = (
-        "未就绪", "未准备好", "还没加载", "页面未", "transition", "refresh",
-        "no_page_change", "target_not_interactable", "无效果", "没有变化"
+        "not ready", "not loaded", "still loading", "page not", "transition", "refresh",
+        "no_page_change", "target_not_interactable", "no effect", "no change",
     )
     reason_suggests_readiness = any(k in reason_lower for k in readiness_keywords)
 
@@ -163,8 +151,8 @@ def infer_constraint_subtype_from_trajectory(
     click_count = sum(1 for a in actions_lower if "click" in a)
     type_count = sum(1 for a in actions_lower if "type" in a)
     disambiguation_keywords = (
-        "歧义", "选错", "多个相似", "相似 target", "错误目标", "locate_multiple",
-        "multiple candidates", "consistent incorrect", "反复"
+        "ambiguous", "wrong pick", "multiple similar", "similar target", "wrong target", "locate_multiple",
+        "multiple candidates", "consistent incorrect", "repeated",
     )
     reason_suggests_disambiguation = any(k in reason_lower for k in disambiguation_keywords)
 
@@ -179,13 +167,7 @@ def build_unstable_state_for_readiness(
     segment_start: int,
     segment_end: int,
 ) -> Dict[str, Any]:
-    """
-    为 Readiness 约束构建 context.unstable_state 描述（ϕ(Δ)）。
-    保守：仅当能推断出时返回非空。
-
-    Returns:
-        例如 {"type": "url_transition"} 或 {"type": "modal_or_region_refresh"} 或 {}
-    """
+    """Build context.unstable_state for readiness constraints when inferable; else {}."""
     if not trajectory or segment_start < 0:
         return {}
     

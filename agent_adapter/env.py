@@ -92,18 +92,18 @@ class WebArenaEnvironmentWrapper():
                     negative_constraints = self.actspec_library.load_negative_constraints()
                     if negative_constraints:
                         self.negative_constraint_filter = NegativeConstraintFilter(negative_constraints)
-                        print(f"[负约束] 已加载 {len(negative_constraints)} 个负约束")
+                        print(f"[NegativeConstraint] Loaded {len(negative_constraints)} negative constraint(s)")
                     else:
-                        print(f"[负约束] 未找到负约束")
+                        print(f"[NegativeConstraint] No negative constraints found")
             except Exception as e:
-                print(f"[警告] ActSpec初始化失败: {e}")
+                print(f"[Warning] ActSpec initialization failed: {e}")
                 import traceback
                 traceback.print_exc()
 
     def _map_action_type_to_name(self, action_type: int) -> str:
         """
-        将 ActionTypes 数字枚举转换为用于指纹的标准化动作类型字符串（小写）。
-        仅用于构建运行时的动作历史序列。
+        Map ActionTypes numeric enums to normalized lowercase action-type strings for fingerprints.
+        Used only to build the runtime action-history sequence.
         """
         mapping = {
             ActionTypes.SCROLL: "scroll",
@@ -121,8 +121,8 @@ class WebArenaEnvironmentWrapper():
 
     def _get_recent_action_history_types(self, max_len: int = 3) -> list:
         """
-        从环境维护的 trajectory 中提取最近 max_len 个已执行 primitive 动作的类型序列（小写字符串）。
-        仅统计已真正执行过的动作，用于与负约束/ActSpec 上的 action_history_prefix 进行匹配。
+        Take the last max_len executed primitive action types (lowercase strings) from env trajectory.
+        Only counts actions that actually ran; used to match action_history_prefix on negative constraints / ActSpec.
         """
         types = []
         
@@ -159,7 +159,7 @@ class WebArenaEnvironmentWrapper():
     def observation(self):
         
         if getattr(self, "_in_observation", False):
-            print("[observation] 重入：跳过负约束路径，返回当前 obs 的裁剪结果")
+            print("[observation] Re-entry: skip negative-constraint path, return pruned current obs")
             try:
                 if "page" in self.info and hasattr(self.info["page"], "url"):
                     self.url = self.info["page"].url
@@ -184,19 +184,19 @@ class WebArenaEnvironmentWrapper():
     def _observation_impl(self):
         
         
-        print(f"[observation] 开始获取 observation...")
+        print(f"[observation] Fetching observation...")
         
         
         
         try:
             if "page" in self.info and hasattr(self.info["page"], "url"):
                 self.url = self.info["page"].url
-                print(f"[observation] 从 info 中获取 URL: {self.url}")
+                print(f"[observation] URL from info: {self.url}")
             else:
                 
-                print(f"[observation] info 中没有 page，保持原有 URL: {self.url}")
+                print(f"[observation] No page in info, keeping URL: {self.url}")
         except Exception as e:
-            print(f"[observation] 获取 URL 时发生异常: {e}，保持原有 URL: {self.url}")
+            print(f"[observation] Exception while reading URL: {e}, keeping URL: {self.url}")
             
             pass
         
@@ -245,7 +245,7 @@ class WebArenaEnvironmentWrapper():
                             action_set_invisible(node)
                     DOM_str = translate_node_to_str(node=DOM_root_node, mode="concise")
                 except Exception as e:
-                    print(f"[负约束] filter_observation 异常: {e}")
+                    print(f"[NegativeConstraint] filter_observation error: {e}")
                     DOM_str = translate_node_to_str(node=DOM_root_node, mode="concise")
             else:
                 DOM_str = translate_node_to_str(node=DOM_root_node, mode="concise")
@@ -266,16 +266,16 @@ class WebArenaEnvironmentWrapper():
     
     def _step_actspec_internal(self, action):
         """
-        ActSpec 内部 step：不递增 steps、不解析 actspec、不做负约束检查。
-        将 action 视为已解析的 primitive 字符串，转为 id_based_actions 并执行。
-        用于 execute_actspec -> _execute_plan 中每步 plan 的 env.step(action_str, is_actspec_internal=True)。
+        Internal ActSpec step: do not increment steps, do not parse actspec, do not run negative-constraint checks.
+        Treat action as a resolved primitive string, convert to id_based_actions, and execute.
+        Used for each plan step in execute_actspec -> _execute_plan via env.step(action_str, is_actspec_internal=True).
         """
         if action is None or action == "":
             return self.status()
         try:
             action_cmds = create_id_based_actions(action)
         except Exception as e:
-            print(f"[ActSpec内部] Invalid action syntax: {e}")
+            print(f"[ActSpec-internal] Invalid action syntax: {e}")
             return self.status()
         if not action_cmds:
             return self.status()
@@ -285,7 +285,7 @@ class WebArenaEnvironmentWrapper():
             action_details = f"action_type={action_type}"
             if "element_id" in action_cmd and action_cmd["element_id"]:
                 action_details += f", element_id={action_cmd['element_id']}"
-            print(f"[ActSpec内部] 执行: {action_details}")
+            print(f"[ActSpec-internal] Executing: {action_details}")
             try:
                 result = self.webarena_env.step(action_cmd)
                 self.obs, _, self.terminated, _, self.info = result
@@ -299,13 +299,13 @@ class WebArenaEnvironmentWrapper():
                 except Exception:
                     pass
                 actual_elapsed = time.time() - action_start_time
-                print(f"[ActSpec内部] 完成，耗时 {actual_elapsed:.2f}s")
+                print(f"[ActSpec-internal] Done in {actual_elapsed:.2f}s")
             except TimeoutError as e:
-                print(f"[警告] ActSpec内部步骤超时: {e}")
+                print(f"[Warning] ActSpec-internal step timed out: {e}")
                 self.is_done = True
                 break
             except Exception as e:
-                print(f"[ActSpec内部] 执行异常: {e}")
+                print(f"[ActSpec-internal] Execution error: {e}")
                 error_str = str(e).lower()
                 if "timeout" in error_str or "cancelled" in error_str:
                     self.is_done = True
@@ -314,11 +314,12 @@ class WebArenaEnvironmentWrapper():
     
     def step(self, action, is_actspec_internal=False):
         """
-        执行一步环境动作。
-        :param action: 动作字符串（可为 actspec 或 primitive 格式）
-        :param is_actspec_internal: 若为 True，表示来自 ActSpec 内部的 plan step 调用：
-            不递增 self.steps、不解析 actspec、不做负约束检查，仅将 action 转为 id_based_actions 并执行。
-            保证「一次 ActSpec 调用 = 一次整体 step」的步数语义。
+        Run one environment step.
+        :param action: Action string (actspec or primitive format).
+        :param is_actspec_internal: If True, call is from an ActSpec internal plan step:
+            do not increment self.steps, do not parse actspec, do not run negative-constraint checks;
+            only convert action to id_based_actions and execute.
+            Preserves step semantics: one ActSpec invocation = one overall step.
         """
         
         if is_actspec_internal:
@@ -335,9 +336,9 @@ class WebArenaEnvironmentWrapper():
         
         self.steps = self.steps + 1
         print(f"\n{'*'*100}")
-        print(f"[环境Step] Step {self.steps}")
-        print(f"[环境Step] 接收到的action: {repr(action)}")
-        print(f"[环境Step] action类型: {type(action)}")
+        print(f"[EnvStep] Step {self.steps}")
+        print(f"[EnvStep] action received: {repr(action)}")
+        print(f"[EnvStep] action type: {type(action)}")
         print(f"{'*'*100}")
         
         if self.steps > self.max_steps:
@@ -388,21 +389,21 @@ class WebArenaEnvironmentWrapper():
                             if k in valid_param_names:
                                 final_params[k] = v
                             else:
-                                print(f"[ActSpec] 忽略未知参数 '{k}'，使用 ActSpec 默认值")
+                                print(f"[ActSpec] Ignoring unknown parameter '{k}', using ActSpec defaults")
                         if parameters:
                             for k in parameters:
                                 if k in valid_param_names and ("element_id" in k.lower() or k.lower() == "button_id"):
-                                    print(f"[ActSpec] 注意：LLM 提供了结构性参数 {k}，执行时仍以 locate/plan 为准")
+                                    print(f"[ActSpec] Note: LLM supplied structural parameter {k}; execution still follows locate/plan")
                         parameters = final_params
                         
-                        print(f"[ActSpec] 执行ActSpec: {action_id} with parameters: {parameters}")
+                        print(f"[ActSpec] Executing ActSpec: {action_id} with parameters: {parameters}")
                         status = self.actspec_executor.execute_actspec(actspec, parameters, self)
                         
                         if status["success"]:
-                            print(f"[ActSpec] ActSpec执行成功")
+                            print(f"[ActSpec] ActSpec execution succeeded")
                             return self.status()
                         else:
-                            print(f"[ActSpec] ActSpec执行失败: {status.get('error', 'unknown error')}, fallback到primitive action")
+                            print(f"[ActSpec] ActSpec execution failed: {status.get('error', 'unknown error')}, falling back to primitive action")
                             try:
                                 if self.actspec_library:
                                     from actspec.url_utils import extract_site_and_page_from_url
@@ -433,7 +434,7 @@ class WebArenaEnvironmentWrapper():
                                 print(f"[ActSpec] immediate negative-constraint extraction failed: {e}")
                             
                     else:
-                        print(f"[ActSpec] 未找到ActSpec: {action_id}, fallback到primitive action")
+                        print(f"[ActSpec] ActSpec not found: {action_id}, falling back to primitive action")
             
             
             try:
@@ -474,7 +475,7 @@ class WebArenaEnvironmentWrapper():
                 if is_forbidden:
                     
                     constraint_id = constraint_info.get("constraint_id", "unknown")
-                    failure_reason = constraint_info.get("failure_reason", "该操作被负约束禁止")
+                    failure_reason = constraint_info.get("failure_reason", "This action is forbidden by a negative constraint")
                     
                     
                     action_type = action_cmd.get("action_type", "UNKNOWN")
@@ -483,8 +484,8 @@ class WebArenaEnvironmentWrapper():
                     if element_id:
                         action_desc += f", element_id={element_id}"
                     
-                    error_msg = f"[负约束拦截] Action被禁止执行: {action_desc}。原因: {failure_reason} (constraint_id: {constraint_id})"
-                    print(f"[负约束拦截] {error_msg}")
+                    error_msg = f"[NegativeConstraint-block] Action blocked: {action_desc}. Reason: {failure_reason} (constraint_id: {constraint_id})"
+                    print(f"[NegativeConstraint-block] {error_msg}")
                     forbidden_errors.append(error_msg)
                 else:
                     
@@ -498,11 +499,11 @@ class WebArenaEnvironmentWrapper():
                 
                 
                 
-                print(f"[负约束拦截] 所有action都被拦截，但steps已计入（当前: {self.steps}/{self.max_steps}）")
+                print(f"[NegativeConstraint-block] All actions blocked; step already counted (current: {self.steps}/{self.max_steps})")
                 
                 
                 if self.steps >= self.max_steps:
-                    print(f"[负约束拦截] 达到最大steps数 {self.max_steps}，终止任务")
+                    print(f"[NegativeConstraint-block] Max steps {self.max_steps} reached, terminating task")
                     self.is_done = True
                     action_cmd = create_id_based_action(f"stop [Trajectory failed: Reached maximum steps {self.max_steps} with all actions blocked by negative constraints.]")
                     self.update_webarena_metrics(action_cmd)
@@ -524,8 +525,8 @@ class WebArenaEnvironmentWrapper():
                 action_details += f", element_id={action_cmd['element_id']}"
             if "text" in action_cmd and action_cmd["text"]:
                 action_details += f", text='{action_cmd['text'][:50]}...'" if len(action_cmd["text"]) > 50 else f", text='{action_cmd['text']}'"
-            print(f"[执行] 开始执行浏览器操作: {action_details}")
-            print(f"[执行] action_cmd完整内容: {action_cmd}")
+            print(f"[Exec] Starting browser action: {action_details}")
+            print(f"[Exec] Full action_cmd: {action_cmd}")
             
             try:
                 
@@ -543,7 +544,7 @@ class WebArenaEnvironmentWrapper():
                 
                 
                 actual_elapsed = time.time() - action_start_time
-                print(f"[完成] 浏览器操作执行完成，耗时 {actual_elapsed:.2f} 秒")
+                print(f"[Done] Browser action finished in {actual_elapsed:.2f}s")
                 if isinstance(self.obs, dict) and "text" in self.obs:
                     raw_text = self.obs["text"]
                     
@@ -553,10 +554,10 @@ class WebArenaEnvironmentWrapper():
                         text_str = raw_text if isinstance(raw_text, str) else str(raw_text)
                     text_len = len(text_str)
                     obs_text_preview = (text_str[:300] + "...") if text_len > 300 else text_str
-                    print(f"[完成] 观察文本预览 (长度: {text_len}): {obs_text_preview}")
+                    print(f"[Done] Observation text preview (length: {text_len}): {obs_text_preview}")
             except TimeoutError as e:
                 
-                print(f"[警告] 执行步骤时检测到超时: {e}")
+                print(f"[Warning] Step timed out: {e}")
                 self.is_done = True
                 break
             except Exception as e:
@@ -583,22 +584,22 @@ class WebArenaEnvironmentWrapper():
             self.trajectory.append(state_info)
             
         if self.is_done:
-            print("[评估] 任务结束 (is_done=True)，准备触发评估")
+            print("[Eval] Task finished (is_done=True), running evaluation")
             try:
                 evaluator = evaluator_router(self.config_file)
-                print("[评估] 评估器已加载，trajectory 步数=%d" % len(self.trajectory))
+                print("[Eval] Evaluator loaded, trajectory length=%d" % len(self.trajectory))
                 
                 page_adapter = self.webarena_env.get_sync_page_adapter()
                 if page_adapter:
                     client = page_adapter.client
-                    print("[评估] 开始执行评估...")
+                    print("[Eval] Running evaluation...")
                     llm_config = getattr(self, "llm_config", None)
                     self.reward = evaluator(trajectory=self.trajectory, config_file=self.config_file, page=page_adapter, client=client, llm_config=llm_config)
-                    print("[评估] 评估执行完成，reward=%.4f" % self.reward)
+                    print("[Eval] Evaluation done, reward=%.4f" % self.reward)
                 else:
-                    print("[评估] 无法获取页面适配器，跳过评估，reward=0")
+                    print("[Eval] No page adapter, skipping evaluation, reward=0")
                     self.reward = 0
             except Exception as e:
-                print("[评估] 评估过程异常: %s" % e)
+                print("[Eval] Evaluation error: %s" % e)
                 self.reward = 0
 

@@ -1,13 +1,13 @@
 """
-Locate执行器：执行多策略定位器，找到目标元素
+Locate executor: run multi-strategy locators to resolve a target element.
 """
 
 from typing import Dict, List, Any, Optional
 
 
 class LocateExecutor:
-    """执行多策略定位器，找到目标元素"""
-    
+    """Multi-strategy Playwright locator runner."""
+
     def locate_element(
         self,
         locate_config: Dict[str, Any],
@@ -15,15 +15,15 @@ class LocateExecutor:
         parameters: Dict[str, Any]
     ) -> Optional[Any]:
         """
-        根据定位配置找到元素
-        
+        Resolve a Playwright locator from locate_config.
+
         Args:
-            locate_config: Locate配置
-            page: Playwright Page对象
-            parameters: 参数字典
-        
+            locate_config: Locate block from ActSpec.
+            page: Playwright Page.
+            parameters: Bound parameters.
+
         Returns:
-            Playwright Locator对象，如果找不到则返回None
+            Locator or None.
         """
         target_elements = locate_config.get("target_elements", [])
         
@@ -47,7 +47,7 @@ class LocateExecutor:
         page: Any,
         parameters: Dict[str, Any]
     ) -> Optional[Any]:
-        """尝试单个定位策略"""
+        """Dispatch one strategy entry."""
         strategy_type = strategy.get("strategy")
         conditions = strategy.get("conditions", {})
         
@@ -65,7 +65,7 @@ class LocateExecutor:
         conditions: Dict[str, Any],
         page: Any
     ) -> Optional[Any]:
-        """基于语义特征定位"""
+        """Role/name/text based locator."""
         role = conditions.get("role")
         label = conditions.get("label")
         text = conditions.get("text")
@@ -101,12 +101,12 @@ class LocateExecutor:
         parameters: Dict[str, Any]
     ) -> Optional[Any]:
         """
-        基于相对位置定位
-        
-        实现逻辑：
-        1. 找到参考元素（relative_to.element_id）
-        2. 根据 position 和 distance 找到目标元素
-        3. 返回目标元素的 locator
+        Relative positioning from a reference node.
+
+        Steps:
+        1. Resolve reference (relative_to.element_id / sibling_info).
+        2. Walk siblings using position + distance.
+        3. Return target locator or None.
         """
         relative_to = conditions.get("relative_to", {})
         sibling_info = conditions.get("sibling_info", {})
@@ -205,12 +205,9 @@ class LocateExecutor:
         parameters: Dict[str, Any]
     ) -> Optional[Any]:
         """
-        基于element_id定位
-        
-        改进：支持多种定位方式
-        1. 尝试 data-testid 属性
-        2. 尝试 id 属性
-        3. 尝试通过 accessibility tree 查找（如果环境支持）
+        Locate via numeric/string element id.
+
+        Tries data-testid, id selector; a11y lookup can be added per environment.
         """
         element_id = conditions.get("element_id", "")
         
@@ -243,10 +240,9 @@ class LocateExecutor:
         return None
     
     def _check_locator_exists(self, locator: Any) -> bool:
-        """检查locator是否存在"""
+        """True if locator resolves to at least one node."""
         try:
             count = locator.count()
             return count > 0
         except Exception:
             return False
-

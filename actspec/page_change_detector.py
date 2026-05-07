@@ -1,6 +1,6 @@
 """
-轻量页面变化检测：自某次快照以来是否有可观测变化。
-不涉及 Post-condition 语义，按 URL → target 状态 → 关键区域文本 hash → 节点数量 优先级判定。
+Lightweight page-change detection: whether anything observable changed since a snapshot.
+Not full post-condition semantics; priority: URL → target presence → text hash → node count.
 """
 
 import hashlib
@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 
 def _get_url_from_env(env: Any) -> str:
-    """从 env 获取当前 URL，与 PreConditionChecker._get_page_url 语义一致。"""
+    """Current URL from env (same idea as PreConditionChecker._get_page_url)."""
     if env is None:
         return ""
     if hasattr(env, "get_url"):
@@ -31,7 +31,7 @@ def _get_url_from_env(env: Any) -> str:
 
 
 def _get_observation_processor_from_env(env: Any) -> Any:
-    """从 env 获取 observation_processor（与 actspec_executor 一致）。"""
+    """Observation processor from env (same as actspec_executor)."""
     if not env:
         return None
     try:
@@ -50,7 +50,7 @@ def _get_observation_processor_from_env(env: Any) -> Any:
 
 
 def _get_observation_text_from_env(env: Any) -> str:
-    """获取当前页面 observation 文本，用于文本 hash。兼容 obs 为 str 或 dict 且 text 为 str/list。"""
+    """Observation text for hashing; supports str obs or dict with text str/list."""
     if env is None:
         return ""
     if hasattr(env, "observation"):
@@ -72,8 +72,7 @@ def _get_observation_text_from_env(env: Any) -> str:
 
 def take_snapshot(env: Any) -> Dict[str, Any]:
     """
-    采集当前页面轻量快照，供 has_change 比较。
-    返回：url, key_region_text_hash（整页可访问文本的 hash）, node_count。
+    Take a lightweight snapshot for has_change: url, full-page text sha256, node_count.
     """
     url = _get_url_from_env(env)
     text = _get_observation_text_from_env(env)
@@ -95,12 +94,7 @@ def has_change(
     current_step_target_id: Optional[str] = None,
 ) -> bool:
     """
-    按优先级判断自 snapshot_before 以来是否有可观测变化：
-    1. URL 变化
-    2. 若提供 current_step_target_id，target 元素状态变化（通过 obs 中节点存在性/数量间接判断，保守）
-    3. 关键区域文本 hash 变化
-    4. 节点数量变化
-    先满足即视为有变化。
+    True if any of (in order): URL changed; target id presence/shift; text hash changed; node count changed.
     """
     if not snapshot_before:
         return True

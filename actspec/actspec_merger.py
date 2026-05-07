@@ -1,5 +1,5 @@
 """
-ActSpec合并器：将ActSpec与primitive action合并
+ActSpec merger: combine high-level ActSpec calls with primitive action lists.
 """
 
 import copy
@@ -9,10 +9,10 @@ from typing import Dict, List, Any, Optional
 
 
 class ActSpecMerger:
-    """ActSpec合并器，负责将ActSpec与primitive actions合并"""
-    
+    """Build merged candidate lists for planners."""
+
     def __init__(self):
-        """初始化ActSpec合并器"""
+        """No persistent state."""
         pass
     
     def merge_actions(
@@ -23,19 +23,9 @@ class ActSpecMerger:
         negative_constraint_filter: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
-        合并actions
-        
-        Args:
-            primitive_actions: primitive action列表
-            actspecs: ActSpec列表
-            context: 上下文信息
-            negative_constraint_filter: 负约束过滤器（可选）
-        
-        Returns:
-            合并后的actions字典，包含：
-                - primitive_actions: List[str]
-                - actspec_actions: List[str]
-                - all_actions: List[str]
+        Merge primitives with optional negative-constraint-filtered ActSpecs.
+
+        Returns dict with primitive_actions, actspec_actions, all_actions.
         """
         
         if negative_constraint_filter:
@@ -58,16 +48,7 @@ class ActSpecMerger:
         actspecs: List[Dict[str, Any]],
         context: Dict[str, Any]
     ) -> List[str]:
-        """
-        生成action候选
-        
-        Args:
-            actspecs: ActSpec列表
-            context: 上下文信息
-        
-        Returns:
-            action候选字符串列表
-        """
+        """Emit `actspec [action_id]` strings for each spec."""
         candidates = []
         
         for actspec in actspecs:
@@ -80,8 +61,7 @@ class ActSpecMerger:
     
     def _build_plan_preview(self, actspec: Dict[str, Any], max_steps: int = 5) -> str:
         """
-        根据单个 actspec 生成简短的「已填参数的多步动作序列预览」字符串，仅用于 prompt 展示。
-        不修改 actspec 本身；对 plan 的副本做轻量参数填充后输出 CLICK/TYPE/GOTO/SCROLL 的最简行。
+        Short multi-step preview with defaults filled (prompt display only; copies plan).
         """
         plan = actspec.get("plan", [])
         if not plan:
@@ -179,16 +159,7 @@ class ActSpecMerger:
         prompt: str,
         actspecs: List[Dict[str, Any]]
     ) -> str:
-        """
-        更新prompt以包含ActSpec描述
-        
-        Args:
-            prompt: 原始prompt
-            actspecs: ActSpec列表
-        
-        Returns:
-            更新后的prompt
-        """
+        """Append ActSpec usage instructions and summaries to the actor prompt."""
         if not actspecs:
             return prompt
         
@@ -265,17 +236,10 @@ class ActSpecMerger:
         action_str: str
     ) -> Optional[Dict[str, Any]]:
         """
-        解析ActSpec action字符串
-        
-        支持格式：actspec [action_id] 或 actspec [action_id] param1=value1 param2="value with spaces"
-        约定：结构性参数（element_id 等）不建议由 LLM 自行填入，优先由系统默认值/locate 决定；
-        文本参数（input_text、search_keyword 等）允许 LLM 在 action 中覆盖。
-        
-        Args:
-            action_str: action字符串
-        
-        Returns:
-            解析后的字典：{"action_id": str, "parameters": Dict} 或 None
+        Parse `actspec [id]` plus optional comma-separated quoted params.
+
+        Structural ids should come from defaults/locate; free-text params may be overridden.
+        Returns {"action_id", "parameters"} or None.
         """
         if not action_str.startswith("actspec"):
             return None

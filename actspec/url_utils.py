@@ -1,6 +1,6 @@
 """
-URL解析工具函数
-用于统一ActSpec生成和查询阶段的URL解析逻辑，确保双向推导一致性
+URL parsing helpers.
+Shared between ActSpec generation and lookup so site/page derivation stays consistent both ways.
 """
 from urllib.parse import urlparse
 from typing import Tuple, Optional, List
@@ -12,21 +12,21 @@ def extract_site_and_page_from_url(
     include_port: bool = True
 ) -> Tuple[str, str]:
     """
-    从URL提取site和page信息（统一方法）
-    
-    支持：
-    1. 端口号提取：对于 ec2-3-129-7-246.us-east-2.compute.amazonaws.com:9999，
-       如果include_port=True，site会包含端口信息（如 "amazonaws:9999"）
-    2. 路径后缀提取：对于 /f/singularity/69404/...，会提取 "singularity" 作为 page
-    3. 智能site识别：支持从hostname提取主域名
-    
+    Extract site and page from a URL (single canonical path).
+
+    Supports:
+    1. Port in site: for ec2-3-129-7-246.us-east-2.compute.amazonaws.com:9999,
+       if include_port=True, site may include the port (e.g. "amazonaws:9999").
+    2. Path segment as page: for /f/singularity/69404/..., "singularity" is taken as page.
+    3. Site from hostname: derive the registrable-style label from the hostname.
+
     Args:
-        url: 当前URL
-        sites: 可用的site列表（可选）
-        include_port: 是否在site中包含端口号（默认True）
-    
+        url: Current URL.
+        sites: Optional list of known site keys to match.
+        include_port: Whether to append :port to site (default True).
+
     Returns:
-        (site, page) 元组
+        (site, page) tuple.
     """
     if not url:
         return ("unknown", "unknown")
@@ -100,17 +100,17 @@ def extract_site_and_page_from_url(
 
 def normalize_site_for_matching(site: str) -> str:
     """
-    标准化site字符串用于匹配
-    
-    例如：
+    Normalize a site string for comparison.
+
+    Examples:
     - "amazonaws:9999" -> "amazonaws"
     - "amazonaws" -> "amazonaws"
-    
+
     Args:
-        site: site字符串
-    
+        site: Site string.
+
     Returns:
-        标准化后的site（去除端口号）
+        Normalized site without port suffix.
     """
     if ":" in site:
         return site.split(":")[0]
@@ -119,19 +119,19 @@ def normalize_site_for_matching(site: str) -> str:
 
 def sites_match(query_site: str, actspec_site: str, flexible: bool = True) -> bool:
     """
-    检查两个site是否匹配
-    
-    支持灵活匹配：
-    - 如果flexible=True，支持部分匹配（如 "amazonaws" 匹配 "amazonaws:9999"）
-    - 如果flexible=False，严格相等匹配
-    
+    Check whether two site strings refer to the same logical site.
+
+    Flexible matching:
+    - If flexible=True, partial match after normalization (e.g. "amazonaws" matches "amazonaws:9999").
+    - If flexible=False, require exact string equality.
+
     Args:
-        query_site: 查询的site
-        actspec_site: ActSpec的site
-        flexible: 是否使用灵活匹配（默认True）
-    
+        query_site: Site from the query context.
+        actspec_site: Site stored on the ActSpec.
+        flexible: Use normalized flexible matching (default True).
+
     Returns:
-        是否匹配
+        True if they match.
     """
     if not query_site or not actspec_site:
         return False
@@ -144,4 +144,3 @@ def sites_match(query_site: str, actspec_site: str, flexible: bool = True) -> bo
     else:
         
         return query_site == actspec_site
-

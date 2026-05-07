@@ -1,9 +1,9 @@
 """
-轨迹切分器：使用LLM分析轨迹，识别可复用的action序列
+Trace segmenter: uses an LLM to split trajectories into reusable action sequences.
 
-设计约定：ActSpec 仅记录**单页内**的动作序列并复用。goto、go_back、new_tab 等会导致 URL/页面
-变化的 action 不纳入记录与复用，仅作为**片段切分标志**：该类动作之后的部分切分为新的 segment，
-并记录新页面的上下文。
+Design: ActSpec records and reuses **single-page** action sequences only. Actions that change URL/page
+(goto, go_back, new_tab, etc.) are not recorded for reuse; they act as **segment boundaries**. Everything
+after such an action starts a new segment with fresh page context.
 """
 
 import json
@@ -27,7 +27,7 @@ PAGE_CHANGE_ACTION_PREFIXES = (
 
 
 def is_page_change_action(action_str: str) -> bool:
-    """判断是否为会导致页面变化的 action（用作切分标志，不纳入记录与复用）。"""
+    """True if this action changes the page (boundary only; not recorded for reuse)."""
     if not action_str or not isinstance(action_str, str):
         return False
     al = action_str.strip().lower()
@@ -35,14 +35,12 @@ def is_page_change_action(action_str: str) -> bool:
 
 
 class TraceSegmenter:
-    """轨迹切分器，将完整的trajectory切分为可复用的segment"""
-    
+    """Splits a full trajectory into reusable segments."""
+
     def __init__(self, llm_config: Optional[lm_config.LMConfig] = None):
         """
-        初始化轨迹切分器
-        
         Args:
-            llm_config: LLM配置，如果为None则使用默认配置
+            llm_config: LM config; if None, a default OpenAI chat config is used.
         """
         self.llm_config = llm_config
         if self.llm_config is None:
@@ -65,19 +63,15 @@ class TraceSegmenter:
         task_info: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        切分轨迹为可复用的segment
-        
+        Segment trajectory into reusable pieces.
+
         Args:
-            trajectory: 完整的轨迹数据
-            task_info: 任务信息（包含task_id, sites, intent等）
-        
+            trajectory: Full trajectory records.
+            task_info: Task metadata (task_id, sites, intent, etc.).
+
         Returns:
-            List[Segment]: 切分后的segment列表，每个segment包含：
-                - segment_id: str
-                - actions: List[str] (标准化的action字符串列表)
-                - context: Dict (site, page, url)
-                - description: str
-                - segment_type: str
+            List of segment dicts, each with segment_id, actions (normalized strings),
+            context {site, page, url}, description, segment_type.
         """
         
         if not trajectory:
@@ -123,13 +117,7 @@ class TraceSegmenter:
     
     def _normalize_action(self, action: Any) -> str:
         """
-        将action标准化为字符串格式
-        
-        Args:
-            action: 可能是字符串、Action对象、dict等
-        
-        Returns:
-            标准化的action字符串
+        Normalize an action to a string (str, dict with action_type, etc.).
         """
         if action is None:
             return "NONE"
@@ -206,16 +194,7 @@ class TraceSegmenter:
         trajectory: List[Dict[str, Any]], 
         task_info: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """
-        调用LLM进行轨迹切分分析
-        
-        Args:
-            trajectory: 完整轨迹
-            task_info: 任务信息
-        
-        Returns:
-            LLM返回的切分结果列表
-        """
+        """Call the LLM to propose segment boundaries; returns a list of segment dicts."""
         
         if not trajectory or not isinstance(trajectory, list):
             print("[Warning] Invalid trajectory format, using empty segments")
@@ -259,45 +238,45 @@ class TraceSegmenter:
             return []
         
         
-        system_prompt = """你是一个轨迹分析专家。你的任务是将用户的操作轨迹切分为可复用的动作序列（segment）。
+        system_prompt = """You are a trajectory analyst. Split the user's action trace into reusable segments.
 
-每个segment应该：
-1. 完成一个独立的子任务（如搜索、筛选、导航、表单填写等）
-2. 可以被参数化后在其他场景复用
-3. 包含2-10个连续的primitive action
-4. **仅包含单页内的操作**：goto、go_back、go_forward、new_tab、close_tab、go_home 等会导致页面/URL变化的动作会在后续作为切分边界单独处理，不要在同一个 segment 中跨页面混合操作。
+Each segment should:
+1. Complete one coherent sub-task (search, filter, navigation, form fill, etc.).
+2. Be parameterizable for reuse in other contexts.
+3. Contain 2–10 consecutive primitive actions.
+4. **Stay on one page only**: actions that change URL/page (goto, go_back, go_forward, new_tab, close_tab, go_home) are handled as boundaries elsewhere—do not mix cross-page steps in one segment.
 
-segment_type可以是以下类型之一：
-- search: 搜索操作
-- filter: 筛选/过滤操作
-- nav: 导航操作（点击链接、返回等）
-- form: 表单填写操作
-- other: 其他类型
+segment_type must be one of:
+- search
+- filter
+- nav (links, back, etc.)
+- form
+- other
 
-请分析以下轨迹，返回JSON格式的切分结果。"""
-        
-        user_prompt = f"""任务信息：
+Analyze the trace below and return JSON only."""
+
+        user_prompt = f"""Task:
 - Task ID: {task_info.get('task_id', 'unknown')}
 - Sites: {task_info.get('sites', [])}
 - Intent: {task_info.get('intent', 'unknown')}
 
-轨迹数据：
+Trajectory:
 {json.dumps(trajectory_summary, indent=2, ensure_ascii=False)}
 
-请返回JSON格式的切分结果，格式如下：
-{ 
+Return JSON only, shaped like:
+{{
   "segments": [
-    { 
+    {{
       "start_step": 0,
       "end_step": 3,
       "segment_type": "search",
-      "description": "在搜索框中输入关键词并点击搜索按钮"
-    } ,
+      "description": "Enter keywords in the search box and click search"
+    }},
     ...
   ]
-} 
+}}
 
-只返回JSON，不要其他文字。"""
+JSON only, no extra text."""
         
         
         messages = [
@@ -327,9 +306,7 @@ segment_type可以是以下类型之一：
         self, 
         trajectory: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """
-        简单的fallback切分策略：将连续的相同类型action合并为一个segment
-        """
+        """Fallback: merge consecutive actions of the same coarse type into one segment."""
         segments = []
         current_segment = None
         
@@ -368,7 +345,7 @@ segment_type可以是以下类型之一：
                         "start_step": i,
                         "end_step": i,
                         "segment_type": segment_type,
-                        "description": f"{segment_type}操作"
+                        "description": f"{segment_type} operation"
                     }
                 else:
                     current_segment["end_step"] = i
@@ -387,17 +364,7 @@ segment_type可以是以下类型之一：
         trajectory: List[Dict[str, Any]],
         task_info: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """
-        提取action序列并组装为Segment结构
-        
-        Args:
-            llm_segments: LLM返回的切分结果
-            trajectory: 完整轨迹
-            task_info: 任务信息
-        
-        Returns:
-            List[Segment]: 结构化segment列表
-        """
+        """Materialize action lists and segment structs from LLM segment metadata."""
         segments = []
         
         
@@ -414,7 +381,7 @@ segment_type可以是以下类型之一：
                 start_step = max(0, seg_info.get("start_step", 0))
                 end_step = min(seg_info.get("end_step", len(trajectory) - 1), len(trajectory) - 1)
                 segment_type = seg_info.get("segment_type", "other")
-                description = seg_info.get("description", f"{segment_type}操作")
+                description = seg_info.get("description", f"{segment_type} operation")
                 
                 
                 if start_step > end_step:
@@ -504,15 +471,7 @@ segment_type可以是以下类型之一：
         return segments
     
     def _validate_segment_granularity(self, segment: Dict[str, Any]) -> bool:
-        """
-        验证segment是否具有足够的粒度
-        
-        Args:
-            segment: segment字典
-        
-        Returns:
-            如果粒度足够，返回True
-        """
+        """Return True if the segment is granular enough (not a trivial single-element repeat)."""
         actions = segment.get("actions", [])
         if len(actions) < 2:
             return False

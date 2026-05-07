@@ -1,5 +1,5 @@
 """
-ActSpec执行器：参数绑定和执行
+ActSpec executor: bind parameters and run plans against env.step.
 """
 
 import copy
@@ -19,10 +19,10 @@ LOCATE_MULTIPLE_CANDIDATES = "_multiple_candidates_"
 
 
 class ActSpecExecutor:
-    """ActSpec执行器，负责参数绑定和执行"""
-    
+    """Bind parameters to plans and execute steps."""
+
     def __init__(self):
-        """初始化ActSpec执行器"""
+        """Stateless executor."""
         pass
     
     def execute_actspec(
@@ -32,15 +32,9 @@ class ActSpecExecutor:
         env: Any
     ) -> Dict[str, Any]:
         """
-        执行ActSpec
-        
-        Args:
-            actspec: ActSpec字典
-            parameters: 参数字典
-            env: 环境对象（需要实现step方法）
-        
-        Returns:
-            Status字典：{"success": bool, "error": str | None}
+        Run one ActSpec end-to-end.
+
+        Returns {"success": bool, "error": str | None}.
         """
         call_record = {"executor_success": None, "error": None}
         try:
@@ -94,10 +88,10 @@ class ActSpecExecutor:
                         
                         
                         if not is_satisfied:
-                            print(f"[ActSpec] 警告：Pre-condition不满足（但继续执行，因为已在过滤阶段检查）: {reason}")
+                            print(f"[ActSpec] Warning: pre-condition not met (continuing; already filtered upstream): {reason}")
                     except Exception as e:
                         
-                        print(f"[警告] Pre-condition检查出错: {e}，继续执行")
+                        print(f"[Warning] Pre-condition check error: {e}, continuing")
                         call_record["pre_condition_satisfied"] = None
             
             
@@ -320,7 +314,7 @@ class ActSpecExecutor:
             }
     
     def _get_page_from_env(self, env: Any) -> Any:
-        """从环境对象中获取Page对象"""
+        """Resolve Playwright page from env wrapper."""
         
         if hasattr(env, 'page'):
             return env.page
@@ -332,7 +326,7 @@ class ActSpecExecutor:
             return None
     
     def _get_observation_text_for_step(self, env: Any) -> str:
-        """获取当前页面 observation 文本，供语义变化处理使用（同步获取）。兼容 obs 为 str 或 dict、text 为 str/list。"""
+        """Observation text for semantic-change handling (str or dict text)."""
         if env is None:
             return ""
         if hasattr(env, "observation"):
@@ -361,13 +355,8 @@ class ActSpecExecutor:
         env: Any = None
     ) -> List[Dict[str, Any]]:
         """
-        使用Locate更新plan中的target
-        
-        定位策略优先级：
-        1. 优先使用语义定位策略（semantic）- 即使LLM提供了element_id参数，也会先尝试语义定位
-        2. 如果语义定位失败，再使用element_id策略作为备选，并验证元素是否存在
-        
-        这样可以避免因为元素ID动态变化导致的执行失败，提高ActSpec的稳定性和抗UI漂移能力。
+        Fill plan targets via locate config: try semantic strategies before numeric element_id
+        so dynamic DOM ids hurt less.
         """
         import copy
         updated_plan = copy.deepcopy(plan)
@@ -375,7 +364,7 @@ class ActSpecExecutor:
         
         observation_processor = self._get_observation_processor_from_env(env)
         if not observation_processor:
-            print("[ActSpec] 警告：无法获取observation_processor，跳过自动定位")
+            print("[ActSpec] Warning: observation_processor missing, skipping auto-locate")
             return updated_plan
         
         target_elements = locate.get("target_elements", [])
@@ -402,19 +391,19 @@ class ActSpecExecutor:
                         step["target"]["value"] = element_id
                         provided_value = parameters.get(param_name)
                         if provided_value and str(provided_value) != str(element_id):
-                            print(f"[ActSpec] 步骤 {step_idx}: 定位成功，找到 element_id={element_id}（覆盖LLM提供的值 {provided_value}）")
+                            print(f"[ActSpec] step {step_idx}: locate ok, element_id={element_id} (overriding LLM value {provided_value})")
                         else:
-                            print(f"[ActSpec] 步骤 {step_idx}: 定位成功，找到 element_id={element_id}")
+                            print(f"[ActSpec] step {step_idx}: locate ok, element_id={element_id}")
                     else:
                         
                         
                         
-                        print(f"[ActSpec] 警告：步骤 {step_idx}: 所有定位策略均失败，保持占位符 {value_s}，后续交由自动修复或语义变化处理")
+                        print(f"[ActSpec] Warning: step {step_idx}: all locate strategies failed, keeping placeholder {value_s} for repair/semantic handling")
         
         return updated_plan
     
     def _get_observation_processor_from_env(self, env: Any) -> Any:
-        """从环境对象中获取observation_processor"""
+        """Observation processor from webarena env."""
         if not env:
             return None
         
@@ -431,7 +420,7 @@ class ActSpecExecutor:
                     if 'observation_processor' in webarena_env.info:
                         return webarena_env.info['observation_processor']
         except Exception as e:
-            print(f"[ActSpec] 获取observation_processor失败: {e}")
+            print(f"[ActSpec] Failed to get observation_processor: {e}")
         
         return None
     
@@ -445,25 +434,8 @@ class ActSpecExecutor:
         parameters: Dict[str, Any]
     ) -> Optional[str]:
         """
-        为指定步骤定位元素并返回element_id
-        
-        定位策略优先级：
-        1. 优先使用语义定位策略（semantic）- 最稳定，抗UI漂移
-        2. 如果语义定位失败，再使用element_id策略作为备选
-        
-        即使提供了element_id参数，也会先尝试语义定位，只有在语义定位失败时
-        才会使用element_id参数，并且会验证element_id对应的元素是否存在。
-        
-        Args:
-            step_idx: plan步骤索引
-            target_elements: locate配置中的target_elements列表
-            locate_executor: LocateExecutor实例（保留以备将来使用）
-            page: Playwright Page对象
-            observation_processor: ObservationProcessor实例
-            parameters: 参数字典
-        
-        Returns:
-            element_id字符串，如果定位失败则返回None
+        Resolve element_id for plan step_idx using locate.target_elements (semantic first).
+        Returns None or LOCATE_MULTIPLE_CANDIDATES sentinel.
         """
         
         target_element_config = None
@@ -500,14 +472,14 @@ class ActSpecExecutor:
                 )
                 if semantic_result is not None:
                     if semantic_result == LOCATE_MULTIPLE_CANDIDATES:
-                        print(f"[ActSpec] 步骤 {step_idx}: 语义定位返回多候选，不启发式选择，返回多候选标记")
+                        print(f"[ActSpec] step {step_idx}: semantic locate returned multiple candidates (no heuristic pick)")
                         return LOCATE_MULTIPLE_CANDIDATES
-                    print(f"[ActSpec] 步骤 {step_idx}: 语义定位成功，找到 element_id={semantic_result}")
+                    print(f"[ActSpec] step {step_idx}: semantic locate ok, element_id={semantic_result}")
                     return semantic_result
                 break  
         
         
-        print(f"[ActSpec] 步骤 {step_idx}: 语义定位失败，尝试使用element_id策略作为备选")
+        print(f"[ActSpec] step {step_idx}: semantic locate failed, falling back to element_id strategy")
         for strategy in strategies:
             strategy_type = strategy.get("strategy")
             conditions = strategy.get("conditions", {})
@@ -528,12 +500,12 @@ class ActSpecExecutor:
                 
                 if element_id_value:
                     if self._verify_element_id_exists(element_id_value, page, observation_processor):
-                        print(f"[ActSpec] 步骤 {step_idx}: element_id策略成功，找到 element_id={element_id_value}")
+                        print(f"[ActSpec] step {step_idx}: element_id strategy ok, element_id={element_id_value}")
                         return element_id_value
                     else:
-                        print(f"[ActSpec] 步骤 {step_idx}: element_id={element_id_value} 对应的元素不存在，跳过")
+                        print(f"[ActSpec] step {step_idx}: element_id={element_id_value} not present in observation, skip")
         
-        print(f"[ActSpec] 步骤 {step_idx}: 所有定位策略均失败")
+        print(f"[ActSpec] step {step_idx}: all locate strategies failed")
         return None
     
     def _locate_by_semantic_and_extract_id(
@@ -543,11 +515,8 @@ class ActSpecExecutor:
         observation_processor: Any
     ) -> Optional[str]:
         """
-        使用语义策略定位元素，并从observation_processor中提取element_id。
-        若匹配到多个候选，返回 LOCATE_MULTIPLE_CANDIDATES，不启发式选择。
-        
-        Returns:
-            element_id 字符串；0 个匹配返回 None；1 个匹配返回该 id；多个匹配返回 LOCATE_MULTIPLE_CANDIDATES
+        Semantic match against observation_processor nodes.
+        Returns one id, None, or LOCATE_MULTIPLE_CANDIDATES.
         """
         if not hasattr(observation_processor, 'obs_nodes_info'):
             return None
@@ -614,18 +583,7 @@ class ActSpecExecutor:
     
     def _verify_element_exists(self, page: Any, role: Optional[str], name: Optional[str]) -> bool:
         """
-        验证元素是否真的存在于页面中（使用Playwright）
-        
-        注意：由于page可能是异步的，这里使用宽松的验证策略。
-        如果验证失败，仍然返回True，因为元素已经在obs_nodes_info中存在。
-        
-        Args:
-            page: Playwright Page对象（可能是同步或异步）
-            role: 元素role
-            name: 元素名称
-        
-        Returns:
-            True如果元素存在或验证失败，False否则
+        Lenient Playwright existence probe (async-safe); defaults True if probing fails.
         """
         
         
@@ -681,17 +639,7 @@ class ActSpecExecutor:
         page: Any,
         observation_processor: Any
     ) -> bool:
-        """
-        验证element_id对应的元素是否存在于当前页面
-        
-        Args:
-            element_id: 元素ID字符串
-            page: Playwright Page对象（可能是同步或异步）
-            observation_processor: ObservationProcessor实例
-        
-        Returns:
-            True如果元素存在，False否则
-        """
+        """True if element_id is listed in observation_processor."""
         if not observation_processor or not hasattr(observation_processor, 'obs_nodes_info'):
             
             return False
@@ -721,7 +669,7 @@ class ActSpecExecutor:
             return False
         except Exception as e:
             
-            print(f"[ActSpec] 验证element_id存在性时出错: {e}")
+            print(f"[ActSpec] Error verifying element_id presence: {e}")
             return False
     
     def _bind_parameters(
@@ -731,16 +679,7 @@ class ActSpecExecutor:
         parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        参数绑定：将参数值注入到 plan 中。
-        若某参数在 parameters 中不存在，则不写入任何值（plan/locate 中原有的 target.value 或文本保持不动）。
-
-        Args:
-            plan: 可执行计划
-            bindings: 参数绑定规则
-            parameters: 参数字典
-
-        Returns:
-            绑定后的 plan
+        Inject parameter values into plan steps per bindings; missing params leave fields untouched.
         """
         
         import copy
@@ -795,16 +734,7 @@ class ActSpecExecutor:
         plan: List[Dict[str, Any]],
         env: Any
     ) -> Dict[str, Any]:
-        """
-        执行plan
-        
-        Args:
-            plan: 可执行计划
-            env: 环境对象
-        
-        Returns:
-            Status字典
-        """
+        """Run each plan step via env.step(..., is_actspec_internal=True)."""
         try:
             for step in plan:
                 primitive = step.get("primitive", "").upper()
@@ -850,15 +780,7 @@ class ActSpecExecutor:
             }
     
     def _plan_step_to_action(self, step: Dict[str, Any]) -> Optional[str]:
-        """
-        将plan step转换为action字符串
-        
-        Args:
-            step: plan step字典
-        
-        Returns:
-            action字符串或None
-        """
+        """Serialize one plan step to env action string."""
         primitive = step.get("primitive", "").upper()
         
         if primitive == "CLICK":

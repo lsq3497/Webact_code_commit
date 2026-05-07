@@ -87,13 +87,13 @@ class Agent:
     
     def call_model_with_message(self, system_prompt=None, messages=None):
         """
-        包装LLM调用，自动处理token使用信息
-        返回模型响应文本
+        Wrap LLM calls and record token usage metadata.
+        Returns model response text.
         """
         
         agent_type = getattr(self, '__class__', type(self)).__name__
         model_name = getattr(self.config, 'model', 'unknown')
-        print(f"[Agent-LLM] {agent_type} 调用模型: {model_name}")
+        print(f"[Agent-LLM] {agent_type} calling model: {model_name}")
         
         
         if messages:
@@ -105,7 +105,7 @@ class Agent:
                     msg_preview = str(last_msg.get("content", ""))[:100] + "..." if len(str(last_msg.get("content", ""))) > 100 else str(last_msg.get("content", ""))
                 else:
                     msg_preview = str(last_msg)[:100] + "..." if len(str(last_msg)) > 100 else str(last_msg)
-                print(f"[Agent-LLM] 消息预览: {msg_preview}")
+                print(f"[Agent-LLM] Message preview: {msg_preview}")
         
         call_start = time.time()
         result = self._call_model_with_message_raw(system_prompt=system_prompt, messages=messages)
@@ -121,12 +121,12 @@ class Agent:
                 self.token_usage["total_tokens"] += token_usage.get("total_tokens", 0)
             response_preview = model_response[:200] + "..." if len(model_response) > 200 else model_response
             token_info = token_usage.get('total_tokens', 'N/A') if token_usage else 'N/A'
-            print(f"[Agent-LLM] 收到响应（耗时 {call_elapsed:.2f} 秒，tokens: {token_info}）: {response_preview}")
+            print(f"[Agent-LLM] Response ({call_elapsed:.2f}s, tokens: {token_info}): {response_preview}")
             return model_response
         else:
             
             response_preview = str(result)[:200] + "..." if len(str(result)) > 200 else str(result)
-            print(f"[Agent-LLM] 收到响应（耗时 {call_elapsed:.2f} 秒）: {response_preview}")
+            print(f"[Agent-LLM] Response ({call_elapsed:.2f}s): {response_preview}")
             return result
 
     def prune_message_list(self, message_list):
@@ -426,7 +426,7 @@ class Actor(Agent):
         return False
     
     def try_repair_actspec_action(self, action_str):
-        """当 actspec 调用内容充分但格式错误（如缺少 action_id 方括号）时，自动补全为预期格式并返回修复后的字符串；否则返回原字符串。"""
+        """If actspec payload is almost valid but missing brackets around action_id, repair and return; else return original."""
         if not action_str or not isinstance(action_str, str):
             return action_str
         s = action_str.strip()
@@ -441,7 +441,7 @@ class Actor(Agent):
         if m:
             id_part, rest = m.group(1), m.group(2)
             repaired = f"actspec [{id_part}]{rest}"
-            print(f"[ActSpec] 自动修复 actspec 格式：为 action_id 补全方括号 -> {repr(repaired)}")
+            print(f"[ActSpec] Auto-fixed actspec formatting (added action_id brackets) -> {repr(repaired)}")
             return repaired
         return action_str
 
@@ -455,13 +455,13 @@ class Actor(Agent):
             case "click":
                 match = re.search(r"click ?\[(\d+)\]", action_str)
                 if not match:
-                    print(f"[调试] is_valid_action: click动作格式错误 - {repr(action_str)}")
+                    print(f"[debug] is_valid_action: invalid click syntax - {repr(action_str)}")
                     return False
                 element_id = match.group(1)
                 observation_text = self.get_observation_text()
                 if element_id in observation_text:
                     return True
-                print(f"[调试] is_valid_action: click动作的元素ID {element_id} 不在观察文本中。观察文本长度: {len(observation_text) if observation_text else 0}")
+                print(f"[debug] is_valid_action: click element_id {element_id} missing from observation (len={len(observation_text) if observation_text else 0})")
                 return False
             case "type":
                 if not (action_str.endswith("[0]") or action_str.endswith("[1]")):
@@ -471,7 +471,7 @@ class Actor(Agent):
                     r"type ?\[(\d+)\] ?\[(.*)\] ?\[(\d+)\]", action_str, re.DOTALL
                 )
                 if not match:
-                    print(f"[调试] is_valid_action: type动作格式错误 - {repr(action_str)}")
+                    print(f"[debug] is_valid_action: invalid type syntax - {repr(action_str)}")
                     return False
                 element_id, text, enter_flag = (
                     match.group(1),
@@ -484,7 +484,7 @@ class Actor(Agent):
                 observation_text = self.get_observation_text()
                 if element_id in observation_text:
                     return True
-                print(f"[调试] is_valid_action: type动作的元素ID {element_id} 不在观察文本中。观察文本长度: {len(observation_text) if observation_text else 0}")
+                print(f"[debug] is_valid_action: type element_id {element_id} missing from observation (len={len(observation_text) if observation_text else 0})")
                 return False
             case "go_back":
                 return True
@@ -508,7 +508,7 @@ class Actor(Agent):
                 
                 match = re.search(r"^actspec\s*\[(?P<id>[^\]]+)\]", action_str.strip())
                 if not match:
-                    print(f"[调试] is_valid_action: actspec动作格式错误 - {repr(action_str)}")
+                    print(f"[debug] is_valid_action: invalid actspec syntax - {repr(action_str)}")
                     return False
                 
                 action_id = match.group("id")
@@ -516,7 +516,7 @@ class Actor(Agent):
                     for spec in self.env.actspecs:
                         if spec.get("action_id") == action_id:
                             return True
-                    print(f"[调试] is_valid_action: actspec动作使用了未知action_id {repr(action_id)}")
+                    print(f"[debug] is_valid_action: unknown actspec action_id {repr(action_id)}")
                     return False
                 
                 return True
@@ -528,9 +528,9 @@ class Actor(Agent):
             
             is_valid = self.is_valid_action(action_str)
             if is_valid:
-                print(f"[调试] are_valid_actions: actspec动作验证通过 - {repr(action_str)}")
+                print(f"[debug] are_valid_actions: actspec ok - {repr(action_str)}")
             else:
-                print(f"[调试] are_valid_actions: actspec动作验证失败 - {repr(action_str)}")
+                print(f"[debug] are_valid_actions: actspec invalid - {repr(action_str)}")
             return is_valid
         
         
@@ -538,13 +538,13 @@ class Actor(Agent):
         valid_actions = self.config.planning_command + self.config.navigation_command + ["goto", "actspec"]
         action_list = self.parse_str_to_action_list(actions, valid_actions)
         if not action_list:
-            print(f"[调试] are_valid_actions: 解析后的动作列表为空。原始actions字符串: {repr(actions)}")
+            print(f"[debug] are_valid_actions: parsed action list empty. Raw actions: {repr(actions)}")
             return False
-        print(f"[调试] are_valid_actions: 解析到 {len(action_list)} 个动作: {action_list}")
+        print(f"[debug] are_valid_actions: parsed {len(action_list)} actions: {action_list}")
         for action in action_list:
             is_valid = self.is_valid_action(action)
             if not is_valid:
-                print(f"[调试] are_valid_actions: 动作验证失败 - {repr(action)}")
+                print(f"[debug] are_valid_actions: validation failed - {repr(action)}")
                 return False
         return True
 
@@ -692,14 +692,14 @@ class Actor(Agent):
     
     def _extract_site_and_page_from_url(self, url: str, sites: list = None) -> tuple:
         """
-        从URL推断site和page信息（使用统一的URL解析函数）
+        Infer (site, page) from URL via shared url_utils helpers.
         
         Args:
-            url: 当前URL
-            sites: 可用的site列表
+            url: Current browser URL.
+            sites: Known site hints from task config.
         
         Returns:
-            (site, page) 元组
+            (site, page) tuple.
         """
         from actspec.url_utils import extract_site_and_page_from_url
         
@@ -708,13 +708,13 @@ class Actor(Agent):
     
     def get_available_actspecs(self, env=None, context=None):
         """
-        获取当前上下文下可用的ActSpec列表
+        Return ActSpecs eligible for the current URL/context.
         
         Args:
-            env: 环境对象（可选，如果提供则从中获取ActSpec库）
+            env: Optional environment carrying ActSpecLibrary hooks.
         
         Returns:
-            ActSpec列表
+            Matching ActSpec dicts.
         """
         
         actspecs = []
@@ -746,7 +746,7 @@ class Actor(Agent):
                 
                 library_path = getattr(env, 'actspec_library_path', None)
                 actspecs = env.actspec_library.query_actspecs(context, library_path=library_path)
-                print(f"[ActSpec] 查询到 {len(actspecs)} 个匹配的ActSpec (site={site}, page={page})")
+                print(f"[ActSpec] Found {len(actspecs)} matching ActSpecs (site={site}, page={page})")
                 
                 
                 if actspecs:
@@ -794,25 +794,25 @@ class Actor(Agent):
                                         if not is_satisfied:
                                             pre_condition_failed_count += 1
                                             action_id = actspec.get("action_id", "unknown")
-                                            print(f"[ActSpec] ActSpec {action_id} 不满足pre-condition: {reason}")
+                                            print(f"[ActSpec] ActSpec {action_id} failed pre-condition: {reason}")
                                             continue
                                     except Exception as e:
                                         
                                         action_id = actspec.get("action_id", "unknown")
-                                        print(f"[警告] ActSpec {action_id} pre-condition检查出错: {e}，保留该ActSpec")
+                                        print(f"[Warning] ActSpec {action_id} pre-condition check error: {e}, keeping spec")
                                 
                                 
                                 filtered_actspecs.append(actspec)
                             
                             if pre_condition_failed_count > 0:
-                                print(f"[ActSpec] 过滤了 {pre_condition_failed_count} 个不满足pre-condition的ActSpec")
+                                print(f"[ActSpec] Filtered out {pre_condition_failed_count} ActSpecs failing pre-condition")
                             actspecs = filtered_actspecs
                         else:
                             
-                            print(f"[ActSpec] 无法获取page对象，跳过pre-condition检查")
+                            print(f"[ActSpec] No page handle; skipping pre-condition filtering")
                     except Exception as e:
                         
-                        print(f"[警告] Pre-condition检查过程出错: {e}，保留所有ActSpec")
+                        print(f"[Warning] Pre-condition filtering failed: {e}, keeping all ActSpecs")
                         import traceback
                         traceback.print_exc()
                 
@@ -822,7 +822,7 @@ class Actor(Agent):
                     actspecs = env.negative_constraint_filter.filter_actspecs(actspecs, context)
                     filtered_count = original_count - len(actspecs)
                     if filtered_count > 0:
-                        print(f"[负约束] 过滤了 {filtered_count} 个被禁止的ActSpec")
+                        print(f"[NegativeConstraint] Filtered {filtered_count} forbidden ActSpecs")
             except Exception as e:
                 print(f"[Warning] Failed to query ActSpecs: {e}")
                 import traceback
@@ -882,13 +882,13 @@ class Actor(Agent):
                 if available_actspecs:
                     base_instruction = instruction
                     instruction = env.actspec_merger.update_prompt_with_actspecs(instruction, available_actspecs)
-                    print(f"[ActSpec] 已将 {len(available_actspecs)} 个ActSpec添加到prompt中")
+                    print(f"[ActSpec] Added {len(available_actspecs)} ActSpecs to prompt")
                     
                     try:
                         actspec_section = instruction[len(base_instruction):]
-                        print("\n[ActSpec] 本轮可用 ActSpec 提示片段开始 ==========================\n")
+                        print("\n[ActSpec] Available ActSpec prompt section START ==========================\n")
                         print(actspec_section)
-                        print("\n[ActSpec] 本轮可用 ActSpec 提示片段结束 ==========================\n")
+                        print("\n[ActSpec] Available ActSpec prompt section END ==========================\n")
                     except Exception:
                         pass
             except Exception as e:
@@ -896,7 +896,7 @@ class Actor(Agent):
                 import traceback
                 traceback.print_exc()
         elif use_negative_constraints_only:
-            print(f"[ActSpec] use_negative_constraints_only=true，不添加 ActSpec 到 prompt")
+            print(f"[ActSpec] use_negative_constraints_only=true, skipping ActSpec prompt injection")
 
         example_source = examples if examples is not None else self.prompt_template.get("examples", [])
         if len(example_source) > 0:
@@ -1245,12 +1245,12 @@ class Actor(Agent):
                 
                 
                 if not model_response or len(model_response.strip()) == 0:
-                    raise ValueError(f"LLM返回了空响应，无法解析动作。Model: {getattr(self.config, 'model', 'Unknown')}")
+                    raise ValueError(f"LLM returned empty response; cannot parse actions. Model: {getattr(self.config, 'model', 'Unknown')}")
                 
                 action_elements = self.parse_elements(text=model_response, key_list=self.config.output)
-                print(f"[解析] parse_elements后的action_elements: {action_elements}")
+                print(f"[parse] action_elements after parse_elements: {action_elements}")
                 action_elements = self.parse_action_from_action_candidates(action_elements=action_elements)
-                print(f"[解析] parse_action_from_action_candidates后的action_elements: {action_elements}")
+                print(f"[parse] action_elements after parse_action_from_action_candidates: {action_elements}")
                 assert not ("action" in action_elements.keys() and any("action candidates" in k for k in action_elements.keys()))
                 if "action" in action_elements.keys():
                     action_elements["action"] = self.try_repair_actspec_action(action_elements["action"])
@@ -1267,9 +1267,9 @@ class Actor(Agent):
                         action_element_list.append(action_elements)
                     else:
                         invalid_action_str = action_elements.get("action", "")
-                        print(f"[错误] Invalid actions: {repr(invalid_action_str)}")
-                        print(f"[调试] action_elements完整内容: {action_elements}")
-                        print(f"[调试] 模型原始响应: {model_response[:500] if model_response else 'None'}...")
+                        print(f"[error] Invalid actions: {repr(invalid_action_str)}")
+                        print(f"[debug] Full action_elements: {action_elements}")
+                        print(f"[debug] Raw model response: {model_response[:500] if model_response else 'None'}...")
                         invalid_actions = True
                 elif any("action candidates" in k for k in action_elements.keys()):
                     action_candidates_key = [k for k in action_elements.keys() if "action candidates" in k][0]
@@ -1291,8 +1291,8 @@ class Actor(Agent):
                             filtered_action_candidates.append({'reason': reason, 'action': action})
                         else:
                             invalid_action_str = action
-                            print(f"[错误] Invalid actions (from candidates): {repr(invalid_action_str)}")
-                            print(f"[调试] 动作原因对: action={repr(action)}, reason={repr(reason)}")
+                            print(f"[error] Invalid actions (from candidates): {repr(invalid_action_str)}")
+                            print(f"[debug] action/reason pair: action={repr(action)}, reason={repr(reason)}")
                             invalid_actions = True
                     if filtered_action_candidates:
                         action_elements[action_candidates_key] = filtered_action_candidates
@@ -1314,7 +1314,7 @@ class Actor(Agent):
                         model_response, action_elements = identity.get_action(identity_instruction+"\nGenerating the command `{}` will be severely punished! Don't generate invalid actions! We don't have that element id in the current observation!".format(invalid_action_str), identity_online_input)
                     else:
                         model_response, action_elements = identity.get_action(identity_instruction, identity_online_input)
-                    print(f"[解析] identity返回的action_elements: {action_elements}")
+                    print(f"[parse] action_elements from identity: {action_elements}")
                     action_elements["action"] = self.try_repair_actspec_action(action_elements["action"])
                     action_elements["action"] = self._prefer_top_confidence_actspec(action_elements["action"], env=env)
                     if self.are_valid_actions(action_elements["action"]):
@@ -1323,8 +1323,8 @@ class Actor(Agent):
                         action_element_list.append(action_elements)
                     else:
                         invalid_action_str = action_elements.get("action", "")
-                        print(f"[错误] Invalid actions (from identity): {repr(invalid_action_str)}")
-                        print(f"[调试] identity action_elements完整内容: {action_elements}")
+                        print(f"[error] Invalid actions (from identity): {repr(invalid_action_str)}")
+                        print(f"[debug] identity action_elements full: {action_elements}")
                         invalid_actions = True
         
         self.verbose(instruction=instruction, online_input=online_input, model_response_list=model_response_list, action_element_list=action_element_list)
@@ -1747,7 +1747,7 @@ class AgentCore:
             env_elapsed_seconds = 0.0
             
             if hasattr(env, 'timeout_occurred') and env.timeout_occurred[0]:
-                print(f"[警告] 检测到超时标志，退出act循环")
+                print(f"[Warning] Timeout flag detected, exiting act loop")
                 env.is_done = True
                 break
             
@@ -1765,13 +1765,13 @@ class AgentCore:
             
             
             print(f"\n{'#'*100}")
-            print(f"[执行Action] Step {self.get_step() + 1}")
-            print(f"[执行Action] 原始action: {repr(action)}")
-            print(f"[执行Action] navigation_action: {repr(navigation_action)}")
-            print(f"[执行Action] action_elements完整内容:")
+            print(f"[ExecAction] Step {self.get_step() + 1}")
+            print(f"[ExecAction] Raw action: {repr(action)}")
+            print(f"[ExecAction] navigation_action: {repr(navigation_action)}")
+            print(f"[ExecAction] action_elements:")
             for key, value in action_elements.items():
                 if key == "input" and isinstance(value, list):
-                    print(f"  {key}: [列表，包含 {len(value)} 项]")
+                    print(f"  {key}: [list, {len(value)} items]")
                 else:
                     value_str = str(value)
                     if len(value_str) > 200:
@@ -1782,19 +1782,19 @@ class AgentCore:
             
             
             if hasattr(env, 'timeout_occurred') and env.timeout_occurred[0]:
-                print(f"[警告] 检测到超时标志，跳过step执行")
+                print(f"[Warning] Timeout flag detected, skipping env.step")
                 env.is_done = True
                 break
             
             try:
-                print(f"[执行Action] 开始执行 env.step()...")
+                print(f"[ExecAction] Starting env.step()...")
                 env_step_start_time = time.perf_counter()
                 status = env.step(navigation_action)
                 env_elapsed_seconds = time.perf_counter() - env_step_start_time
-                print(f"[执行Action] env.step() 执行完成，返回状态: {status}")
+                print(f"[ExecAction] env.step() finished with status: {status}")
             except TimeoutError as e:
                 
-                print(f"[警告] Action执行超时，退出act循环: {e}")
+                print(f"[Warning] Action timed out, exiting act loop: {e}")
                 if hasattr(env, 'timeout_occurred'):
                     env.timeout_occurred[0] = True
                 env.is_done = True
@@ -1803,7 +1803,7 @@ class AgentCore:
                 
                 error_str = str(e).lower()
                 if "greenlet" in error_str or "cannot switch" in error_str:
-                    print(f"[警告] 检测到 greenlet 错误（通常由超时引起），退出act循环: {e}")
+                    print(f"[Warning] Greenlet error (often timeout-related), exiting act loop: {e}")
                     if hasattr(env, 'timeout_occurred'):
                         env.timeout_occurred[0] = True
                     env.is_done = True
