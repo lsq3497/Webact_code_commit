@@ -23,7 +23,4 @@ This folder is a minimal extraction from the project for anonymous paper artifac
 - `scripts/`
   - `eval_webarena.py`: evaluation loop, including optional global primitive budget `B`
 
-## Notes
 
-- This is extracted code intended for method-level reproducibility and citation.
-- Non-core logs, datasets, and unrelated experiment artifacts are intentionally excluded.
