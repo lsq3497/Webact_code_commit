@@ -42,7 +42,7 @@ class ActSpecLibrary:
         Returns:
             保存的文件路径
         """
-        # 获取库路径
+        
         if library_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             lib_path = self._get_library_path(self.base_path, timestamp)
@@ -51,18 +51,18 @@ class ActSpecLibrary:
         
         lib_path.mkdir(parents=True, exist_ok=True)
         
-        # 获取action_id作为文件名
+        
         action_id = actspec.get("action_id", "unknown")
-        # 清理action_id，使其适合作为文件名
+        
         safe_filename = action_id.replace("/", "_").replace("\\", "_").replace(":", "_")
         filename = f"{safe_filename}.json"
         file_path = lib_path / filename
         
-        # 保存ActSpec
+        
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(actspec, f, indent=2, ensure_ascii=False)
         
-        # 更新index.json
+        
         self._update_index(actspec, lib_path, filename)
         
         return str(file_path)
@@ -78,7 +78,7 @@ class ActSpecLibrary:
             ActSpec列表
         """
         if library_path is None:
-            # 查找最新的时间戳目录
+            
             lib_path = self._get_latest_library_path()
         else:
             lib_path = Path(library_path)
@@ -86,7 +86,7 @@ class ActSpecLibrary:
         if not lib_path.exists():
             return []
         
-        # 加载index.json
+        
         index_file = lib_path / "index.json"
         if not index_file.exists():
             return []
@@ -94,7 +94,7 @@ class ActSpecLibrary:
         with open(index_file, 'r', encoding='utf-8') as f:
             index = json.load(f)
         
-        # 加载所有ActSpec文件
+        
         actspecs: List[Dict[str, Any]] = []
         for entry in index:
             file_path = lib_path / entry["file"]
@@ -103,18 +103,18 @@ class ActSpecLibrary:
                     actspec = json.load(f)
                     metadata = actspec.get("metadata", {})
                     
-                    # 过滤已被禁用的ActSpec（淘汰仅由统计规则 update_stats_batch 触发）
+                    
                     if metadata.get("disabled", False):
                         continue
                     
                     actspecs.append(actspec)
         
-        # 排序：从未被调用过的(usage_count==0) 最高优先级，其次按置信度降序
+        
         def _sort_key(spec):
             meta = spec.get("metadata", {})
             usage = int(meta.get("usage_count", 0) or 0)
             conf = float(meta.get("confidence", 1.0))
-            # 未使用过的排最前(0)，再按置信度降序(-conf)
+            
             return (-conf, usage)
         actspecs.sort(key=_sort_key)
         
@@ -143,7 +143,7 @@ class ActSpecLibrary:
         if not lib_path.exists():
             return []
         
-        # 加载index.json
+        
         index_file = lib_path / "index.json"
         if not index_file.exists():
             return []
@@ -151,7 +151,7 @@ class ActSpecLibrary:
         with open(index_file, 'r', encoding='utf-8') as f:
             index = json.load(f)
         
-        # 过滤匹配的ActSpec（使用灵活的匹配策略 + 动作历史前缀指纹）
+        
         from .url_utils import sites_match
         
         matched_entries = []
@@ -163,25 +163,25 @@ class ActSpecLibrary:
             query_history_types = []
         
         for entry in index:
-            # 灵活匹配site（支持端口号部分匹配）
-            # 例如：查询 "amazonaws" 可以匹配 ActSpec 的 "amazonaws:9999"
-            # 或者查询 "amazonaws:9999" 可以匹配 ActSpec 的 "amazonaws"
+            
+            
+            
             actspec_site = entry.get("site", "")
             if query_site:
                 if not sites_match(query_site, actspec_site, flexible=True):
                     continue
             
-            # 匹配page（如果提供，支持部分匹配）
-            # 例如：查询 "singularity" 可以匹配 ActSpec 的 "singularity" 或包含 "singularity" 的page
+            
+            
             actspec_page = entry.get("page", "")
             if query_page:
-                # 支持精确匹配或包含匹配
+                
                 if query_page != actspec_page and query_page not in actspec_page and actspec_page not in query_page:
                     continue
             
             matched_entries.append(entry)
         
-        # 加载匹配的ActSpec文件
+        
         actspecs: List[Dict[str, Any]] = []
         for entry in matched_entries:
             file_path = lib_path / entry["file"]
@@ -189,20 +189,20 @@ class ActSpecLibrary:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     actspec = json.load(f)
                     
-                    # 进一步检查url_pattern匹配（如果提供）
+                    
                     if query_url_pattern:
                         actspec_url_pattern = actspec.get("context", {}).get("url_pattern", "")
                         if actspec_url_pattern and query_url_pattern not in actspec_url_pattern:
                             continue
                     
-                    # 过滤已被禁用的ActSpec（淘汰仅由统计规则 update_stats_batch 触发）
+                    
                     metadata = actspec.get("metadata", {})
                     if metadata.get("disabled", False):
                         continue
 
-                    # 动作历史前缀匹配：若 ActSpec 带有非空 action_history_prefix，
-                    # 则当前历史类型序列中必须包含该前缀作为连续子序列；
-                    # 若该字段缺失或为空列表，则视为对历史无要求。
+                    
+                    
+                    
                     prefix = actspec.get("action_history_prefix")
                     if isinstance(prefix, list) and prefix:
                         if not _history_prefix_matches(prefix, query_history_types):
@@ -210,7 +210,7 @@ class ActSpecLibrary:
 
                     actspecs.append(actspec)
         
-        # 排序：从未被调用过的(usage_count==0) 最高优先级，其次按置信度降序
+        
         def _sort_key(spec):
             meta = spec.get("metadata", {})
             usage = int(meta.get("usage_count", 0) or 0)
@@ -243,22 +243,22 @@ class ActSpecLibrary:
         if not self.base_path.exists():
             return self.base_path
         
-        # 获取所有时间戳目录
+        
         timestamp_dirs = []
         for item in self.base_path.iterdir():
             if item.is_dir():
                 try:
-                    # 尝试解析时间戳
+                    
                     datetime.strptime(item.name, "%Y%m%d_%H%M%S")
                     timestamp_dirs.append(item)
                 except ValueError:
-                    # 不是时间戳格式，跳过
+                    
                     continue
         
         if not timestamp_dirs:
             return self.base_path
         
-        # 按名称排序（时间戳格式可以按字符串排序）
+        
         timestamp_dirs.sort(key=lambda x: x.name, reverse=True)
         return timestamp_dirs[0]
     
@@ -278,13 +278,13 @@ class ActSpecLibrary:
         """
         index_file = library_path / "index.json"
         
-        # 加载现有index
+        
         index = []
         if index_file.exists():
             with open(index_file, 'r', encoding='utf-8') as f:
                 index = json.load(f)
         
-        # 检查是否已存在
+        
         action_id = actspec.get("action_id", "")
         existing_idx = None
         for i, entry in enumerate(index):
@@ -292,7 +292,7 @@ class ActSpecLibrary:
                 existing_idx = i
                 break
         
-        # 准备新条目
+        
         context = actspec.get("context", {})
         new_entry = {
             "action_id": action_id,
@@ -301,13 +301,13 @@ class ActSpecLibrary:
             "file": filename
         }
         
-        # 更新或追加
+        
         if existing_idx is not None:
             index[existing_idx] = new_entry
         else:
             index.append(new_entry)
         
-        # 保存index.json
+        
         with open(index_file, 'w', encoding='utf-8') as f:
             json.dump(index, f, indent=2, ensure_ascii=False)
     
@@ -322,7 +322,7 @@ class ActSpecLibrary:
             负约束列表
         """
         if library_path is None:
-            # 查找最新的时间戳目录
+            
             lib_path = self._get_latest_library_path()
         else:
             lib_path = Path(library_path)
@@ -330,7 +330,7 @@ class ActSpecLibrary:
         if not lib_path.exists():
             return []
         
-        # 加载negative_constraints_index.json
+        
         index_file = lib_path / "negative_constraints_index.json"
         if not index_file.exists():
             return []
@@ -338,7 +338,7 @@ class ActSpecLibrary:
         with open(index_file, 'r', encoding='utf-8') as f:
             index = json.load(f)
         
-        # 加载所有负约束文件
+        
         constraints = []
         for entry in index:
             file_path = lib_path / entry["file"]
@@ -364,7 +364,7 @@ class ActSpecLibrary:
         Returns:
             保存的文件路径
         """
-        # 获取库路径
+        
         if library_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             lib_path = self._get_library_path(self.base_path, timestamp)
@@ -373,22 +373,22 @@ class ActSpecLibrary:
         
         lib_path.mkdir(parents=True, exist_ok=True)
         
-        # 创建负约束子目录
+        
         negative_dir = lib_path / "negative_constraints"
         negative_dir.mkdir(parents=True, exist_ok=True)
         
-        # 获取constraint_id作为文件名
+        
         constraint_id = constraint.get("constraint_id", "unknown")
-        # 清理constraint_id，使其适合作为文件名
+        
         safe_filename = constraint_id.replace("/", "_").replace("\\", "_").replace(":", "_")
         filename = f"{safe_filename}.json"
         file_path = negative_dir / filename
         
-        # 保存负约束
+        
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(constraint, f, indent=2, ensure_ascii=False)
         
-        # 更新负约束索引
+        
         self._update_negative_constraints_index(constraint, lib_path, f"negative_constraints/{filename}")
         
         return str(file_path)
@@ -409,13 +409,13 @@ class ActSpecLibrary:
         """
         index_file = library_path / "negative_constraints_index.json"
         
-        # 加载现有index
+        
         index = []
         if index_file.exists():
             with open(index_file, 'r', encoding='utf-8') as f:
                 index = json.load(f)
         
-        # 检查是否已存在
+        
         constraint_id = constraint.get("constraint_id", "")
         existing_idx = None
         for i, entry in enumerate(index):
@@ -423,7 +423,7 @@ class ActSpecLibrary:
                 existing_idx = i
                 break
         
-        # 准备新条目（含论文两类子类型，便于筛选与统计）
+        
         context = constraint.get("context", {})
         new_entry = {
             "constraint_id": constraint_id,
@@ -433,17 +433,17 @@ class ActSpecLibrary:
             "file": filename
         }
         
-        # 更新或追加
+        
         if existing_idx is not None:
             index[existing_idx] = new_entry
         else:
             index.append(new_entry)
         
-        # 保存index.json
+        
         with open(index_file, 'w', encoding='utf-8') as f:
             json.dump(index, f, indent=2, ensure_ascii=False)
 
-    # ============ 以下为在线统计与置信度更新相关的新接口 ============
+    
 
     def _resolve_library_path(self, library_path: Optional[str] = None) -> Path:
         """
@@ -494,7 +494,7 @@ class ActSpecLibrary:
         if not index:
             return
 
-        # 建立 action_id -> 文件路径 映射
+        
         action_to_file: Dict[str, str] = {}
         for entry in index:
             aid = entry.get("action_id")
@@ -528,7 +528,7 @@ class ActSpecLibrary:
             success = success_prev + success_new
             fail = fail_prev + fail_new
 
-            # 重新计算失败率
+            
             fail_rate = (fail / usage) if usage > 0 else 0.0
 
             disabled_prev = bool(metadata.get("disabled", False))
@@ -538,9 +538,9 @@ class ActSpecLibrary:
             metadata["fail_count"] = fail
             metadata["fail_rate"] = round(fail_rate, 4)
 
-            # 根据规则更新 disabled 标记：
-            # - 使用次数 <5 且失败次数 >=3 -> 禁用
-            # - 使用次数 >=5 且失败率 >= 0.4 -> 禁用
+            
+            
+            
             disabled = metadata.get("disabled", False)
             if usage < 5 and fail >= 3:
                 disabled = True
@@ -548,8 +548,8 @@ class ActSpecLibrary:
                 disabled = True
             metadata["disabled"] = disabled
 
-            # 当 ActSpec 首次因失败率规则被禁用时，可选择将其转换为负约束写入当前库。
-            # 消融实验中应关闭该功能，避免执行失败污染负约束库。
+            
+            
             if (
                 convert_to_negative_constraints
                 and (not disabled_prev)
@@ -559,7 +559,7 @@ class ActSpecLibrary:
                 try:
                     constraint = _build_negative_constraint_from_actspec_struct(actspec)
                     if constraint:
-                        # 保存到同一库目录下的 negative_constraints 子目录
+                        
                         self.save_negative_constraint(constraint, str(lib_path))
                         metadata["converted_to_negative_constraint"] = True
                         print(f"[负约束] ActSpec {actspec.get('action_id', 'unknown')} 多次失败已被禁用，"
@@ -569,12 +569,12 @@ class ActSpecLibrary:
 
             actspec["metadata"] = metadata
 
-            # 写回文件
+            
             try:
                 with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(actspec, f, indent=2, ensure_ascii=False)
             except Exception:
-                # 出错时跳过该 ActSpec，避免影响其他更新
+                
                 continue
 
     def update_confidence(
@@ -612,7 +612,7 @@ class ActSpecLibrary:
         if not index:
             return None
 
-        # 查找对应的文件路径
+        
         file_path = None
         for entry in index:
             if entry.get("action_id") == action_id:
@@ -631,28 +631,28 @@ class ActSpecLibrary:
         metadata = actspec.get("metadata", {}) or {}
         current_confidence = float(metadata.get("confidence", 1.0))
 
-        # 根据 Post 条件验证结果更新置信度
+        
         if post_success:
-            # Post 成功：s(α) ← s(α) + 1
+            
             new_confidence = current_confidence + 1.0
         else:
-            # Post 失败：s(α) ← s(α) - λ
+            
             new_confidence = current_confidence - lambda_penalty
 
-        # 上界裁剪：s(α) ≤ s_max
+        
         new_confidence = min(new_confidence, s_max)
 
-        # 下界保护：置信度不低于 0（仅影响排序，不触发淘汰）
+        
         new_confidence = max(new_confidence, 0.0)
 
-        # 更新 metadata（不再根据 confidence==0 设置 disabled）
+        
         metadata["confidence"] = round(new_confidence, 2)
         if new_confidence <= 0.0:
             metadata["disabled"] = True
 
         actspec["metadata"] = metadata
 
-        # 写回文件
+        
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(actspec, f, indent=2, ensure_ascii=False)
@@ -735,7 +735,7 @@ def _history_prefix_matches(
     n, m = len(history), len(prefix)
     if n < m:
         return False
-    # 滑动窗口，检查任意连续子序列是否与前缀完全一致
+    
     for start in range(0, n - m + 1):
         if history[start:start + m] == prefix:
             return True
@@ -909,8 +909,8 @@ class NegativeConstraintFilter:
         ):
             return False
 
-        # 若负约束声明了 pre_condition，则沿用 ActSpec 的 PreConditionChecker 语义：
-        # 仅当当前页面/状态满足 pre_condition 时，该负约束才参与后续匹配。
+        
+        
         pre_condition = constraint.get("pre_condition") or {}
         if pre_condition:
             try:
@@ -922,17 +922,17 @@ class NegativeConstraintFilter:
                     pre_condition, page_or_env, {}, observation_text=observation_text
                 )
                 if not is_satisfied:
-                    # 不满足 pre_condition，则该负约束在当前步骤不生效
+                    
                     return False
             except Exception as e:
-                # 保守策略：pre_condition 检查异常时不禁用该约束，仍然继续后续匹配
+                
                 constraint_id = constraint.get("constraint_id", "unknown")
                 print(f"[负约束] pre-condition 检查出错 (constraint_id={constraint_id}): {e}，保守保留该约束继续匹配")
 
-        # 动作历史前缀宽松匹配（包含匹配）
+        
         prefix = constraint.get("action_history_prefix")
         if not isinstance(prefix, list) or not prefix:
-            # 无指纹或空指纹：视为对历史无要求
+            
             return True
 
         runtime_history: List[str] = context.get("action_history_types") or []
@@ -1010,26 +1010,26 @@ class NegativeConstraintFilter:
         constraint_subtype: str = "",
     ) -> bool:
         """检查上下文是否匹配。对 readiness 约束且含 unstable_state 时，仅在当前也为未稳定状态时匹配。"""
-        # 检查site和page是否匹配
+        
         constraint_site = constraint_context.get("site", "unknown")
         constraint_page = constraint_context.get("page", "unknown")
         current_site = current_context.get("site", "unknown")
         current_page = current_context.get("page", "unknown")
         
-        # 如果约束的site不是unknown，必须匹配
+        
         if constraint_site != "unknown" and constraint_site != current_site:
             return False
         
-        # 如果约束的page不是unknown，必须匹配
+        
         if constraint_page != "unknown" and constraint_page != current_page:
             return False
         
-        # Readiness 约束：若约束中指明了 unstable_state，则仅在当前上下文也为“未稳定”时生效。
-        # 若 env 未提供 unstable_state 键，则保守地仍应用该约束（避免漏拦）。
+        
+        
         if constraint_subtype == "readiness" and constraint_context.get("unstable_state"):
             if "unstable_state" in current_context and not current_context.get("unstable_state"):
                 return False
-        # 可以添加更复杂的URL pattern匹配逻辑
+        
         return True
     
     def _plan_matches(
@@ -1046,7 +1046,7 @@ class NegativeConstraintFilter:
         if not forbidden_plan:
             return False
 
-        # 首步为占位符时，planning 阶段不采用该负约束（避免按 primitive 前缀误杀整条 ActSpec）
+        
         first_forbidden = forbidden_plan[0]
         first_primitive = (first_forbidden.get("primitive") or "").upper()
         if first_primitive in ("CLICK", "TYPE", "HOVER", "UNKNOWN"):
@@ -1116,26 +1116,26 @@ class NegativeConstraintFilter:
             - description: 描述信息
             如果未被禁止，返回 (False, None)
         """
-        # 将 action_cmd 转换为 plan step 格式
+        
         plan_step = self._action_cmd_to_plan_step(action_cmd)
         if not plan_step:
-            # 如果无法转换，认为不被禁止（可能是未知的action类型）
+            
             return (False, None)
         
-        # 检查是否匹配任何负约束的 forbidden_plan 的第一个 step
+        
         for constraint in self.constraints:
             if not self._constraint_applies(constraint, context):
                 continue
             
-            # 检查 forbidden_plan 的第一个 step 是否匹配
+            
             forbidden_plan = constraint.get("forbidden_plan", [])
             if not forbidden_plan:
                 continue
             
-            # 检查第一个 step 是否匹配
+            
             first_step = forbidden_plan[0]
             if self._plan_step_matches(first_step, plan_step):
-                # 找到匹配的负约束
+                
                 constraint_info = {
                     "constraint_id": constraint.get("constraint_id", "unknown"),
                     "failure_reason": constraint.get("description", {}).get("failure_reason", "该操作被负约束禁止"),
@@ -1155,21 +1155,21 @@ class NegativeConstraintFilter:
         Returns:
             plan step 字典，如果无法转换则返回 None
         """
-        # 使用硬编码的映射（避免循环导入）
-        # ActionTypes 的值定义在 browser_env/actions.py 中：
-        # SCROLL = 1, CLICK = 6, TYPE = 7, HOVER = 8, PAGE_FOCUS = 9, NEW_TAB = 10,
-        # GOTO_URL = 11, GO_BACK = 12, GO_FORWARD = 13, STOP = 14
+        
+        
+        
+        
         action_type_to_primitive = {
-            1: "SCROLL",      # SCROLL
-            6: "CLICK",       # CLICK
-            7: "TYPE",        # TYPE
-            8: "HOVER",       # HOVER
-            9: "GOTO",        # PAGE_FOCUS (简化处理为 GOTO)
-            10: "GOTO",       # NEW_TAB (简化处理为 GOTO)
-            11: "GOTO",       # GOTO_URL
-            12: "GOBACK",     # GO_BACK
-            13: "GOFORWARD",  # GO_FORWARD
-            14: "STOP",       # STOP
+            1: "SCROLL",      
+            6: "CLICK",       
+            7: "TYPE",        
+            8: "HOVER",       
+            9: "GOTO",        
+            10: "GOTO",       
+            11: "GOTO",       
+            12: "GOBACK",     
+            13: "GOFORWARD",  
+            14: "STOP",       
         }
         
         action_type = action_cmd.get("action_type")
@@ -1179,7 +1179,7 @@ class NegativeConstraintFilter:
         primitive = action_type_to_primitive[action_type]
         plan_step = {"primitive": primitive}
         
-        # 根据 primitive 类型添加其他字段
+        
         if primitive == "CLICK" or primitive == "TYPE" or primitive == "HOVER":
             element_id = action_cmd.get("element_id")
             if element_id:
@@ -1191,7 +1191,7 @@ class NegativeConstraintFilter:
         if primitive == "TYPE":
             text = action_cmd.get("text", "")
             if isinstance(text, list):
-                # 如果是字符ID列表，需要转换（这里简化处理）
+                
                 text = "".join([chr(c) if isinstance(c, int) and 32 <= c < 128 else str(c) for c in text])
             plan_step["text"] = text
         
@@ -1220,111 +1220,111 @@ class NegativeConstraintFilter:
         Returns:
             如果匹配，返回 True
         """
-        # 检查 primitive 类型是否匹配
+        
         forbidden_primitive = forbidden_step.get("primitive", "").upper()
         plan_primitive = plan_step.get("primitive", "").upper()
         
         if forbidden_primitive != plan_primitive:
             return False
         
-        # 如果 primitive 是 NOTE 或 PRUNE，需要匹配相同的 primitive 和 raw 内容
+        
         if forbidden_primitive in ["NOTE", "PRUNE"]:
-            # NOTE 和 PRUNE 必须匹配相同的 primitive
+            
             if plan_primitive != forbidden_primitive:
                 return False
-            # 还需要检查 raw 字段是否匹配（如果都有）
+            
             forbidden_raw = forbidden_step.get("raw", "")
             plan_raw = plan_step.get("raw", "")
             if forbidden_raw and plan_raw:
-                # 对于 note 和 prune，需要匹配相同的 raw 内容
+                
                 if forbidden_raw != plan_raw:
                     return False
             return True
         
-        # 如果 primitive 是 UNKNOWN，需要更严格的匹配条件
-        # 只有当负约束明确指定了element_id或其他具体条件时，才匹配
+        
+        
         if forbidden_primitive == "UNKNOWN":
-            # 检查是否有element_id约束
+            
             forbidden_target = forbidden_step.get("target", {})
             if forbidden_target.get("strategy") == "element_id":
-                # 如果指定了element_id，只匹配该element_id的操作
+                
                 forbidden_element_id = forbidden_target.get("value", "")
                 plan_element_id = plan_step.get("target", {}).get("value", "")
                 
-                # 如果负约束使用参数占位符（如 {{click_id}}），视为过度宽泛，不予采用（不匹配）
+                
                 if self._is_parameter_placeholder(forbidden_element_id):
                     return False
                 
-                # 否则精确匹配element_id
+                
                 if forbidden_element_id and plan_element_id != forbidden_element_id:
                     return False
                 return True
             else:
-                # 如果只有UNKNOWN且没有element_id约束，不应该匹配（太宽泛）
+                
                 return False
         
-        # 对于 CLICK, TYPE, HOVER 等需要 element_id 的操作，检查 element_id 是否匹配
+        
         if forbidden_primitive in ["CLICK", "TYPE", "HOVER"]:
             forbidden_target = forbidden_step.get("target", {})
             plan_target = plan_step.get("target", {})
             
-            # 如果负约束中指定了 target，必须完全匹配
+            
             if forbidden_target:
-                # 检查 strategy 是否匹配
+                
                 forbidden_strategy = forbidden_target.get("strategy", "")
                 plan_strategy = plan_target.get("strategy", "")
                 if forbidden_strategy and forbidden_strategy != plan_strategy:
                     return False
                 
-                # 如果指定了 element_id，必须精确匹配
+                
                 if forbidden_strategy == "element_id":
                     forbidden_element_id = forbidden_target.get("value", "")
                     plan_element_id = plan_target.get("value", "")
                     
-                    # 如果负约束使用参数占位符（如 {{click_id}}），视为过度宽泛，不予采用（不匹配）
+                    
                     if self._is_parameter_placeholder(forbidden_element_id):
                         return False
                     else:
-                        # 否则精确匹配 element_id
+                        
                         if forbidden_element_id and plan_element_id != forbidden_element_id:
                             return False
             
-            # 对于 TYPE 操作，还需要检查 text 字段是否匹配
+            
             if forbidden_primitive == "TYPE":
                 forbidden_text = forbidden_step.get("text", "")
                 plan_text = plan_step.get("text", "")
                 
-                # 如果负约束指定了 text，必须匹配
+                
                 if forbidden_text:
-                    # 如果负约束使用参数占位符，匹配任何 text
+                    
                     if self._is_parameter_placeholder(forbidden_text):
-                        pass  # 参数占位符匹配任何值
+                        pass  
                     else:
-                        # 否则精确匹配 text
+                        
                         if forbidden_text != plan_text:
                             return False
         
-        # 对于 SCROLL 操作，检查 direction 是否匹配
+        
         if forbidden_primitive == "SCROLL":
             forbidden_direction = forbidden_step.get("direction", "")
             plan_direction = plan_step.get("direction", "")
             
-            # 如果负约束指定了 direction，必须匹配
+            
             if forbidden_direction and forbidden_direction != plan_direction:
                 return False
         
-        # 对于 GOTO 操作，检查 url 是否匹配
+        
         if forbidden_primitive == "GOTO":
             forbidden_url = forbidden_step.get("url", "")
             plan_url = plan_step.get("url", "")
             
-            # 如果负约束指定了 url，必须匹配
+            
             if forbidden_url:
-                # 如果负约束使用参数占位符，匹配任何 url
+                
                 if self._is_parameter_placeholder(forbidden_url):
-                    pass  # 参数占位符匹配任何值
+                    pass  
                 else:
-                    # 否则精确匹配 url
+                    
                     if forbidden_url != plan_url:
                         return False
         

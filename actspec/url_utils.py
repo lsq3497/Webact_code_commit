@@ -37,7 +37,7 @@ def extract_site_and_page_from_url(
         port = parsed.port
         path = parsed.path or ""
         
-        # 从sites列表中匹配site
+        
         site = "unknown"
         if sites:
             for s in sites:
@@ -45,46 +45,46 @@ def extract_site_and_page_from_url(
                     site = s
                     break
         
-        # 如果没匹配到，尝试从hostname提取
+        
         if site == "unknown":
-            # 提取主域名部分（去掉www等前缀）
+            
             hostname_parts = hostname.replace("www.", "").split(".")
             if len(hostname_parts) >= 2:
-                # 对于 amazonaws.com 这样的域名，提取 amazonaws
-                # 对于 postmill.xyz 这样的域名，提取 postmill
+                
+                
                 main_domain = hostname_parts[-2]
                 
-                # 如果主域名是常见的通用域名，尝试提取更前面的部分
+                
                 if main_domain in ["com", "org", "net", "edu", "gov", "io", "co", "xyz"]:
                     if len(hostname_parts) >= 3:
-                        # 例如：compute.amazonaws.com -> amazonaws
+                        
                         site = hostname_parts[-3]
                     else:
                         site = main_domain
                 else:
                     site = main_domain
         
-        # 如果include_port为True且存在端口号，将端口号添加到site
+        
         if include_port and port:
             site = f"{site}:{port}"
         
-        # 从路径推断page
+        
         page = "unknown"
         if path:
-            # 提取路径的非空部分
+            
             path_parts = [p for p in path.split("/") if p]
             if path_parts:
-                # 跳过单字符路径段（如 "f"），寻找有意义的路径段
-                # 例如：/f/singularity/69404/... -> page = "singularity"
+                
+                
                 for part in path_parts:
-                    # 跳过单字符路径段和数字ID
+                    
                     if len(part) > 1 and not part.isdigit():
-                        # 检查是否是UUID格式
+                        
                         if not (len(part) > 10 and all(c in "0123456789abcdef-" for c in part.lower())):
                             page = part
                             break
                 
-                # 如果所有路径段都是单字符或数字，使用第一个非空路径段
+                
                 if page == "unknown" and path_parts:
                     page = path_parts[0]
             else:
@@ -137,11 +137,11 @@ def sites_match(query_site: str, actspec_site: str, flexible: bool = True) -> bo
         return False
     
     if flexible:
-        # 灵活匹配：去除端口号后比较
+        
         query_normalized = normalize_site_for_matching(query_site)
         actspec_normalized = normalize_site_for_matching(actspec_site)
         return query_normalized == actspec_normalized
     else:
-        # 严格匹配
+        
         return query_site == actspec_site
 

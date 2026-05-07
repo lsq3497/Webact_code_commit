@@ -37,14 +37,14 @@ class ActSpecMerger:
                 - actspec_actions: List[str]
                 - all_actions: List[str]
         """
-        # 如果提供了负约束过滤器，先过滤ActSpec
+        
         if negative_constraint_filter:
             actspecs = negative_constraint_filter.filter_actspecs(actspecs, context)
         
-        # 生成ActSpec action候选
+        
         actspec_actions = self.generate_action_candidates(actspecs, context)
         
-        # 合并所有actions
+        
         all_actions = primitive_actions + actspec_actions
         
         return {
@@ -72,7 +72,7 @@ class ActSpecMerger:
         
         for actspec in actspecs:
             action_id = actspec.get("action_id", "")
-            # 调用格式仅 actspec [action_id]，参数由 ActSpec 内 target.value 或自动修复/LLM 填充
+            
             action_str = f"actspec [{action_id}]"
             candidates.append(action_str)
         
@@ -88,8 +88,8 @@ class ActSpecMerger:
             return ""
         bindings = actspec.get("bindings", {})
         params_def = actspec.get("parameters", {})
-        # 预览用参数：每个参数默认取第一个 candidate，
-        # 同时保留所有 candidates 以便对同一参数绑定到多步时按顺序展开
+        
+        
         preview_params: Dict[str, Any] = {}
         all_candidates: Dict[str, List[Any]] = {}
         for pname, pdef in params_def.items():
@@ -103,14 +103,14 @@ class ActSpecMerger:
                 elif pdef.get("type") == "string":
                     preview_params[pname] = ""
         preview_plan = copy.deepcopy(plan)
-        # 按 bind_to 注入到 preview_plan
+        
         for param_name, binding_info in bindings.items():
             bind_to = binding_info.get("bind_to", []) or []
             if not bind_to:
                 continue
             param_cands = all_candidates.get(param_name) or []
-            # 若该参数既有多条 candidates，又绑定到多步，则按顺序为每步使用不同的 candidate；
-            # 否则回退为对所有绑定步使用同一个 preview_params 值。
+            
+            
             if param_cands and len(param_cands) >= len(bind_to):
                 for idx, bind_rule in enumerate(bind_to):
                     step_idx = bind_rule.get("step")
@@ -143,12 +143,12 @@ class ActSpecMerger:
                             step["target"]["value"] = str(val)
                     elif field == "url":
                         step["url"] = str(val)
-        # {{param}} 占位符替换（主要用于 text/url 等非 element_id 场景）
+        
         plan_str = json.dumps(preview_plan)
         for pname, pval in preview_params.items():
-            plan_str = plan_str.replace(f"{{{{{pname}}}}}", str(pval))
+            plan_str = plan_str.replace(f"{ { {pname}} } ", str(pval))
         preview_plan = json.loads(plan_str)
-        # 只展示 CLICK / TYPE / GOTO / SCROLL
+        
         lines: List[str] = []
         for idx, step in enumerate(preview_plan):
             if len(lines) >= max_steps:
@@ -192,7 +192,7 @@ class ActSpecMerger:
         if not actspecs:
             return prompt
         
-        # 提示：优先考虑复用可用 ActSpec 以节省步数，放在标题前突出强调
+        
         actspec_section = "\n\n"
         actspec_section += (
             "ActSpec bundles multiple primitive actions into one high-level step. "
@@ -238,7 +238,7 @@ class ActSpecMerger:
             else:
                 confidence_note = f" (confidence: {conf})"
             
-            # 仅使用 action_id 作为标题，避免单独抽取短名称
+            
             actspec_section += f"### {action_id}{confidence_note}\n"
             actspec_section += f"- **Summary**: {description.get('summary', 'N/A')}\n"
             actspec_section += f"- **When to use**: {description.get('when_to_use', 'N/A')}\n"
@@ -248,14 +248,14 @@ class ActSpecMerger:
                 actspec_section += f"- **Plan preview (with default parameters)**:\n"
                 for line in plan_preview_str.split("\n"):
                     actspec_section += f"  {line}\n"
-            # 列出可覆盖的文本参数名，避免 LLM 自造参数名
+            
             params_def = actspec.get("parameters", {}) or {}
             text_param_names = [k for k, p in params_def.items() if (p or {}).get("type") == "string"]
             if text_param_names:
                 actspec_section += f"- **Overrideable text params**: {', '.join(text_param_names)}\n"
             actspec_section += "\n"
         
-        # 将ActSpec描述添加到prompt末尾
+        
         updated_prompt = prompt + actspec_section
         
         return updated_prompt
@@ -280,14 +280,14 @@ class ActSpecMerger:
         if not action_str.startswith("actspec"):
             return None
         
-        # 严格提取action_id：必须是 actspec [full_action_id]
+        
         match = re.search(r"^actspec\s*\[(?P<id>[^\]]+)\]", action_str.strip())
         if not match:
             return None
         
         action_id = match.group("id")
         
-        # 从 action_str 中截取参数部分（在第一个 ']' 之后）
+        
         close_bracket_idx = action_str.find("]")
         params_part = action_str[close_bracket_idx + 1 :].strip()
         parameters: Dict[str, Any] = {}
@@ -297,8 +297,8 @@ class ActSpecMerger:
                 "parameters": parameters
             }
         
-        # 期望格式：,param1="value1",param2="value with spaces"
-        # 去掉首个逗号（如果有）
+        
+        
         if params_part.startswith(","):
             params_part = params_part[1:].strip()
         if not params_part:
@@ -307,24 +307,24 @@ class ActSpecMerger:
                 "parameters": parameters
             }
         
-        # 按逗号分隔每个 param 片段，然后分别解析 name="value"
+        
         raw_items = [item.strip() for item in params_part.split(",") if item.strip()]
         for item in raw_items:
-            # 优先匹配带双引号的 value
+            
             m_q = re.match(r'^(\w+)\s*=\s*"([^"]*)"$', item)
             if m_q:
                 param_name = m_q.group(1)
                 param_value = m_q.group(2)
                 parameters[param_name] = param_value
                 continue
-            # 再匹配不带引号的简单值（无空格）
+            
             m_u = re.match(r'^(\w+)\s*=\s*([^\s,]+)$', item)
             if m_u:
                 param_name = m_u.group(1)
                 param_value = m_u.group(2)
                 parameters[param_name] = param_value
                 continue
-            # 解析失败的片段直接忽略，避免整体报错
+            
         
         return {
             "action_id": action_id,

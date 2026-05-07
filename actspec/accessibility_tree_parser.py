@@ -21,25 +21,25 @@ class AccessibilityTreeParser:
         """
         lines = observation_text.split('\n')
         elements = []
-        stack = []  # 用于跟踪层级结构
+        stack = []  
         
         for line in lines:
             if not line.strip():
                 continue
             
-            # 计算缩进级别
+            
             indent_level = len(line) - len(line.lstrip('\t'))
             
-            # 解析元素
+            
             element = self._parse_line(line.strip())
             if not element:
                 continue
             
-            # 调整stack以匹配当前缩进级别
+            
             while len(stack) > indent_level:
                 stack.pop()
             
-            # 设置父元素
+            
             if stack:
                 element['parent_id'] = stack[-1].get('element_id')
                 if 'children' not in stack[-1]:
@@ -48,7 +48,7 @@ class AccessibilityTreeParser:
             else:
                 element['parent_id'] = None
             
-            # 添加到stack和elements列表
+            
             stack.append(element)
             elements.append(element)
         
@@ -67,7 +67,7 @@ class AccessibilityTreeParser:
         - button [113] 'MarvelsGrantMan136'
         - text 'Postmill'
         """
-        # 匹配格式：role [id] 'label' [url: ...]
+        
         pattern1 = r"^(\w+)\s+\[(\d+)\]\s+'([^']*)'\s*(?:\[url:\s*([^\]]+)\])?"
         match1 = re.match(pattern1, line)
         if match1:
@@ -80,7 +80,7 @@ class AccessibilityTreeParser:
                 "text": label
             }
         
-        # 匹配格式：role [id] 'label'（无URL）
+        
         pattern2 = r"^(\w+)\s+\[(\d+)\]\s+'([^']*)'"
         match2 = re.match(pattern2, line)
         if match2:
@@ -92,7 +92,7 @@ class AccessibilityTreeParser:
                 "text": label
             }
         
-        # 匹配格式：role 'label'（无ID，如text元素）
+        
         pattern3 = r"^(\w+)\s+'([^']*)'"
         match3 = re.match(pattern3, line)
         if match3:
@@ -104,7 +104,7 @@ class AccessibilityTreeParser:
                 "text": label
             }
         
-        # 匹配格式：role（无ID和label，如main、complementary等容器）
+        
         pattern4 = r"^(\w+)$"
         match4 = re.match(pattern4, line)
         if match4:
@@ -139,12 +139,12 @@ class AccessibilityTreeParser:
             "region": None
         }
         
-        # 查找父元素
+        
         if element.get("parent_id"):
             parent = self.find_element_by_id(tree, element["parent_id"])
             context["parent"] = parent
             
-            # 查找祖先元素
+            
             current = parent
             while current:
                 context["ancestors"].append(current)
@@ -153,12 +153,12 @@ class AccessibilityTreeParser:
                 else:
                     break
         
-        # 查找兄弟元素
+        
         if context["parent"]:
             siblings = context["parent"].get("children", [])
             context["siblings"] = [s for s in siblings if s.get("element_id") != element_id]
         
-        # 识别区域（main、complementary、header等）
+        
         for ancestor in context["ancestors"]:
             role = ancestor.get("role", "")
             if role in ["main", "complementary", "header", "footer", "navigation"]:

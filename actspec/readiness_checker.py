@@ -37,7 +37,7 @@ def check_readiness(env: Any, element_id: str) -> Tuple[bool, str]:
     if not proc or not getattr(proc, "obs_nodes_info", None):
         return False, "无法获取 obs_nodes_info"
     obs_nodes_info = proc.obs_nodes_info
-    # element_id 可能是字符串形式的数字（obs 中的 node 下标）；obs_nodes_info 的 key 可能是 str 或 int
+    
     key = str(element_id) if str(element_id) in obs_nodes_info else None
     if key is None:
         try:
@@ -50,7 +50,7 @@ def check_readiness(env: Any, element_id: str) -> Tuple[bool, str]:
             pass
     if key is None:
         return False, "element_id 不在当前页面观测中"
-    # 若有 TreeNode，检查 properties 中的 disabled/readonly
+    
     if hasattr(proc, "get_node_info_by_element_id"):
         try:
             node = proc.get_node_info_by_element_id(int(element_id))
@@ -61,6 +61,6 @@ def check_readiness(env: Any, element_id: str) -> Tuple[bool, str]:
             if props.get("disabled") is True:
                 return False, "元素为 disabled"
             if props.get("readonly") is True:
-                # readonly 对输入框表示不可编辑，对 button 等无影响；保守视为可交互
+                
                 pass
     return True, ""

@@ -107,10 +107,10 @@ def has_change(
     url_now = _get_url_from_env(env)
     if url_now != snapshot_before.get("url", ""):
         return True
-    # Target 状态：若 target 仍在 obs 中且节点数有变化，可视为有变化；无 obs 则跳过
+    
     proc = _get_observation_processor_from_env(env)
     if current_step_target_id and proc and getattr(proc, "obs_nodes_info", None):
-        # 仅做存在性检查；更细的 value/checked 等需后端暴露，此处保守
+        
         pass
     text_now = _get_observation_text_from_env(env)
     hash_now = hashlib.sha256(text_now.encode("utf-8", errors="replace")).hexdigest()

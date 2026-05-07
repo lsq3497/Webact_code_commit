@@ -1,12 +1,12 @@
-from AgentOccam.obs_opt import parse_node_descendants, parse_node_ancestors, parse_node_siblings, action_set_invisible, action_set_visible, action_set_visible_if_with_name, translate_node_to_str, construct_new_DOM_with_visible_nodes
-from AgentOccam.llms.claude import call_claude, call_claude_with_messages, arrange_message_for_claude
-from AgentOccam.llms.mistral import call_mistral, call_mistral_with_messages, arrange_message_for_mistral
-from AgentOccam.llms.cohere import call_cohere, call_cohere_with_messages, arrange_message_for_cohere
-from AgentOccam.llms.llama import call_llama, call_llama_with_messages, arrange_message_for_llama
-from AgentOccam.llms.titan import call_titan, call_titan_with_messages, arrange_message_for_titan
-from AgentOccam.llms.gpt import call_gpt, call_gpt_with_messages, arrange_message_for_gpt
-from AgentOccam.llms.gemini import call_gemini, call_gemini_with_messages, arrange_message_for_gemini
-from AgentOccam.utils import CURRENT_DIR
+﻿from AgentCore.obs_opt import parse_node_descendants, parse_node_ancestors, parse_node_siblings, action_set_invisible, action_set_visible, action_set_visible_if_with_name, translate_node_to_str, construct_new_DOM_with_visible_nodes
+from AgentCore.llms.claude import call_claude, call_claude_with_messages, arrange_message_for_claude
+from AgentCore.llms.mistral import call_mistral, call_mistral_with_messages, arrange_message_for_mistral
+from AgentCore.llms.cohere import call_cohere, call_cohere_with_messages, arrange_message_for_cohere
+from AgentCore.llms.llama import call_llama, call_llama_with_messages, arrange_message_for_llama
+from AgentCore.llms.titan import call_titan, call_titan_with_messages, arrange_message_for_titan
+from AgentCore.llms.gpt import call_gpt, call_gpt_with_messages, arrange_message_for_gpt
+from AgentCore.llms.gemini import call_gemini, call_gemini_with_messages, arrange_message_for_gemini
+from AgentCore.utils import CURRENT_DIR
 
 from typing import Dict
 import re
@@ -183,7 +183,7 @@ class Agent:
         return element_dict
 
     def get_output_specifications(self):
-        output_specifications = "\n".join([f"{o.upper()}:\n" + "".join(open(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "output_specifications", "{}.txt".format(o.replace(" ", "_"))), "r", encoding='utf-8').readlines()) for o in self.config.output])
+        output_specifications = "\n".join([f"{o.upper()}:\n" + "".join(open(os.path.join(CURRENT_DIR, "Agent", "prompts", "output_specifications", "{}.txt".format(o.replace(" ", "_"))), "r", encoding='utf-8').readlines()) for o in self.config.output])
         return output_specifications
 
     def parse_stipulated_action_list(self, text: str, action: str, actions: list) -> str:
@@ -317,7 +317,7 @@ class PlanningActor(Agent):
         self.instruction = None
 
     def get_planning_specifications(self):
-        return "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "planning_specifications", f"{p}.txt"), "r", encoding='utf-8').readlines()) for p in self.config.planning_command])
+        return "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "Agent", "prompts", "planning_specifications", f"{p}.txt"), "r", encoding='utf-8').readlines()) for p in self.config.planning_command])
     
     def get_instruction(self):
         if self.instruction:
@@ -345,10 +345,10 @@ class ReflectionActor(Agent):
         self.instruction = None
 
     def get_planning_specifications(self):
-        return "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "planning_specifications", f"{p}.txt"), "r", encoding='utf-8').readlines()) for p in self.config.planning_command])
+        return "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "Agent", "prompts", "planning_specifications", f"{p}.txt"), "r", encoding='utf-8').readlines()) for p in self.config.planning_command])
     
     def get_navigation_specifications(self):
-        return "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "navigation_specifications", f"{n}.txt"), "r", encoding='utf-8').readlines()) for n in self.config.navigation_command])
+        return "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "Agent", "prompts", "navigation_specifications", f"{n}.txt"), "r", encoding='utf-8').readlines()) for n in self.config.navigation_command])
     
     def get_instruction(self):
         if self.instruction:
@@ -681,13 +681,13 @@ class Actor(Agent):
     def get_planning_specifications(self):
         if self.planning_specifications:
             return self.planning_specifications
-        self.planning_specifications = "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "planning_specifications", f"{p}.txt"), "r", encoding='utf-8').readlines()) for p in self.config.planning_command])
+        self.planning_specifications = "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "Agent", "prompts", "planning_specifications", f"{p}.txt"), "r", encoding='utf-8').readlines()) for p in self.config.planning_command])
         return self.planning_specifications
     
     def get_navigation_specifications(self):
         if self.navigation_specifications:
             return self.navigation_specifications
-        self.navigation_specifications = "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "navigation_specifications", f"{n}.txt"), "r", encoding='utf-8').readlines()) for n in self.config.navigation_command])
+        self.navigation_specifications = "\n".join(["- " + "".join(open(os.path.join(CURRENT_DIR, "Agent", "prompts", "navigation_specifications", f"{n}.txt"), "r", encoding='utf-8').readlines()) for n in self.config.navigation_command])
         return self.navigation_specifications
     
     def _extract_site_and_page_from_url(self, url: str, sites: list = None) -> tuple:
@@ -1389,10 +1389,10 @@ class Critic(Agent):
     def get_output_specifications(self):
         output_specification_filepath_list = []
         for o in self.config.output:
-            if os.path.exists(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "output_specifications", "{}_{}.txt".format(o.replace(" ", "_"), self.config.character))):
-                output_specification_filepath_list.append(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "output_specifications", "{}_{}.txt".format(o.replace(" ", "_"), self.config.character)))
+            if os.path.exists(os.path.join(CURRENT_DIR, "Agent", "prompts", "output_specifications", "{}_{}.txt".format(o.replace(" ", "_"), self.config.character))):
+                output_specification_filepath_list.append(os.path.join(CURRENT_DIR, "Agent", "prompts", "output_specifications", "{}_{}.txt".format(o.replace(" ", "_"), self.config.character)))
             else:
-                output_specification_filepath_list.append(os.path.join(CURRENT_DIR, "AgentOccam", "prompts", "output_specifications", "{}.txt".format(o.replace(" ", "_"))))
+                output_specification_filepath_list.append(os.path.join(CURRENT_DIR, "Agent", "prompts", "output_specifications", "{}.txt".format(o.replace(" ", "_"))))
         output_specifications = "\n".join([f"{o.upper()}:\n" + "".join(open(filepath, "r", encoding='utf-8').readlines()) for o, filepath in zip(self.config.output, output_specification_filepath_list)])
         return output_specifications
 
@@ -1645,7 +1645,7 @@ class Judge(Agent):
         except:
             return action_element_list[0], judgement_elements
 
-class AgentOccam:
+class AgentCore:
     def __init__(self,
                  config = None,
                  prompt_dict: Dict = None,
@@ -1920,3 +1920,4 @@ class AgentOccam:
             data_to_log["token_usage"] = token_usage_step
         
         self.trajectory.append(data_to_log)
+

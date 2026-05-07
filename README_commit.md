@@ -17,10 +17,15 @@ This folder is a minimal extraction from the project for anonymous paper artifac
   - `url_utils.py`, `element_context_extractor.py`, `accessibility_tree_parser.py`: context extraction/parsing utilities
 
 - `agent_adapter/`: minimal adapter layer to runtime agent/environment
-  - `AgentOccam.py`: planner-side action selection and ActSpec integration
+  - `agent_core.py`: planner-side action selection and ActSpec integration
   - `env.py`: environment integration, immediate failed-trace constraint extraction/injection
 
 - `scripts/`
   - `eval_webarena.py`: evaluation loop, including optional global primitive budget `B`
+
+## Notes
+
+- This is extracted code intended for method-level reproducibility and citation.
+- Non-core logs, datasets, and unrelated experiment artifacts are intentionally excluded.
 
 

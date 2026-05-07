@@ -11,7 +11,7 @@ class PostConditionVerifier:
     def verify_post_condition(
         self,
         post_condition: Dict[str, Any],
-        page: Any,  # Playwright Page对象或环境对象
+        page: Any,  
         pre_url: str,
         pre_obs: Dict[str, Any]
     ) -> Tuple[bool, str]:
@@ -24,7 +24,7 @@ class PostConditionVerifier:
         post_url = self._get_page_url(page)
         post_obs = {"text": self._get_page_content(page)}
         
-        # 1. 检查URL变化
+        
         url_change = post_condition.get("url_change", {})
         if url_change:
             expected_type = url_change.get("type")
@@ -37,20 +37,20 @@ class PostConditionVerifier:
                 if pattern and not self._match_url_pattern(post_url, pattern):
                     return False, f"URL变化不符合模式: {pattern}"
         
-        # 2. 检查新元素出现
+        
         element_appears = post_condition.get("element_appears", [])
         for element_config in element_appears:
             if element_config.get("required", True):
                 if not self._check_element_exists(element_config, page):
                     return False, f"必需的新元素未出现: {element_config}"
         
-        # 3. 检查元素消失
+        
         element_disappears = post_condition.get("element_disappears", [])
         for element_config in element_disappears:
             if self._check_element_exists(element_config, page):
                 return False, f"期望消失的元素仍存在: {element_config}"
         
-        # 4. 检查文本出现
+        
         text_appears = post_condition.get("text_appears", [])
         post_text = post_obs.get("text", "")
         pre_text = pre_obs.get("text", "")

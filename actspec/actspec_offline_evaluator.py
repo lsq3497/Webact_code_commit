@@ -43,7 +43,7 @@ def _llm_judge_call(
     当前实现尽量简单：给出 ActSpec 的 effect / post_condition 和执行前后文本。
     返回 True 表示成功，False 表示失败。
     """
-    # 如果没有前后文本，退化为使用 executor 的结果
+    
     pre_text = call_record.get("pre_text") or ""
     post_text = call_record.get("post_text") or ""
     if not pre_text and not post_text:
@@ -77,7 +77,7 @@ def _llm_judge_call(
     try:
         response = llm_utils.call_llm(lm_cfg, messages)
     except Exception:
-        # 如果 LLM 调用失败，回退到 executor 的结果
+        
         return bool(call_record.get("executor_success"))
 
     text = str(response).strip().lower()
@@ -85,7 +85,7 @@ def _llm_judge_call(
         return True
     if "fail" in text and "success" not in text:
         return False
-    # 模糊情况时，回退到 executor 结果
+    
     return bool(call_record.get("executor_success"))
 
 
@@ -132,10 +132,10 @@ def evaluate_actspec_reuse_for_log(
         if not spec:
             continue
 
-        # 成功/失败判定（用于统计与淘汰）：
-        # 只要未达到步数上限且 executor 成功完成复用过程（即打印了 [ActSpec] ActSpec执行成功），即计入成功次数。
-        # - 达到 LLM 调整次数上限（plan step 数 - 1）→ 每一步都需调整，复用无效 → 失败
-        # - 未达到上限且 executor_success 为 True → 成功（不再要求 post_condition_satisfied）
+        
+        
+        
+        
         success_flag = None
         if call.get("reached_adjustment_limit") is True:
             success_flag = False
@@ -146,16 +146,16 @@ def evaluate_actspec_reuse_for_log(
         else:
             success_flag = False
 
-        # 若上述规则无法判定，再使用 LLM 语义判断（可选）
+        
         if success_flag is None and llm_cfg is not None:
             try:
                 success_flag = _llm_judge_call(llm_cfg, spec, call)
             except Exception:
-                # 失败时保留原有 success_flag
+                
                 pass
 
         if success_flag is None:
-            # 无法判断则跳过
+            
             continue
 
         confidence_updates.append((action_id, success_flag))

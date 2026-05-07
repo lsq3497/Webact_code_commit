@@ -22,7 +22,7 @@ def _normalize_action_type_from_str(action: Any) -> Optional[str]:
     s = str(action).strip().lower()
     if not s:
         return None
-    # 取第一个连续的字母片段作为动作类型
+    
     i = 0
     while i < len(s) and not s[i].isalpha():
         i += 1
@@ -51,12 +51,12 @@ def build_action_history_prefix(
     """
     if not trajectory or segment_start is None:
         return []
-    # 片段在轨迹开头时，不记录指纹（表示无历史限制）
+    
     if segment_start <= 1:
         return []
 
     types: List[str] = []
-    # 从片段前一条往前回溯，最多取 max_prefix_len 个有效动作
+    
     for idx in range(segment_start - 1, -1, -1):
         step = trajectory[idx]
         if not isinstance(step, dict):
@@ -71,11 +71,11 @@ def build_action_history_prefix(
 
     if not types:
         return []
-    # 按时间正序返回（先发生的在前）
+    
     return list(reversed(types))
 
 
-# 负约束子类型（论文仅此两类）
+
 CONSTRAINT_SUBTYPE_READINESS = "readiness"
 CONSTRAINT_SUBTYPE_DISAMBIGUATION = "disambiguation"
 CONSTRAINT_SUBTYPE_UNSPECIFIED = "unspecified"
@@ -127,8 +127,8 @@ def infer_constraint_subtype_from_trajectory(
     reason_lower = (failure_reason or "").lower()
     actions_lower = [a.lower() for a in actions_in_segment if a]
 
-    # ----- Readiness 信号 -----
-    # 片段内或前一步有 URL 变化（goto / 导航），随后多次 click/type，且失败原因暗示“未就绪/无效果”
+    
+    
     url_changed_in_or_before_segment = False
     prev_url = None
     for i in range(max(0, segment_start - 1), min(segment_end + 1, len(trajectory))):
@@ -158,8 +158,8 @@ def infer_constraint_subtype_from_trajectory(
     if url_changed_in_or_before_segment and has_click_or_type and reason_suggests_readiness:
         return CONSTRAINT_SUBTYPE_READINESS
 
-    # ----- Disambiguation 信号 -----
-    # 片段内多次同类操作（如多次 click），且失败原因暗示“选错/歧义/多个相似”
+    
+    
     click_count = sum(1 for a in actions_lower if "click" in a)
     type_count = sum(1 for a in actions_lower if "type" in a)
     disambiguation_keywords = (
@@ -188,7 +188,7 @@ def build_unstable_state_for_readiness(
     """
     if not trajectory or segment_start < 0:
         return {}
-    # 检查片段前一步是否为导航
+    
     prev_idx = segment_start - 1
     if prev_idx < 0:
         return {}
@@ -196,4 +196,4 @@ def build_unstable_state_for_readiness(
     action_str = str(prev.get("action") or "").lower()
     if "goto" in action_str or "go_back" in action_str or "go_forward" in action_str:
         return {"type": "url_transition"}
-    return {"type": "unstable"}  # 通用未稳定
+    return {"type": "unstable"}  

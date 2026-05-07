@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional
 from llms import lm_config, utils as llm_utils
 
 
-# 导致页面/URL 变化的 action 前缀（用于切分与排除，不纳入 segment 的 actions）
+
 PAGE_CHANGE_ACTION_PREFIXES = (
     "goto ",
     "goto[",
@@ -46,7 +46,7 @@ class TraceSegmenter:
         """
         self.llm_config = llm_config
         if self.llm_config is None:
-            # 默认配置
+            
             self.llm_config = lm_config.LMConfig(
                 provider="openai",
                 model="gpt-4-turbo",
@@ -79,7 +79,7 @@ class TraceSegmenter:
                 - description: str
                 - segment_type: str
         """
-        # 验证输入
+        
         if not trajectory:
             print("[Warning] Empty trajectory provided")
             return []
@@ -88,23 +88,23 @@ class TraceSegmenter:
             print(f"[Warning] Invalid trajectory type: {type(trajectory)}")
             return []
         
-        # 确保task_info是dict
+        
         if not isinstance(task_info, dict):
             task_info = {}
         
         try:
-            # 调用LLM进行切分分析
+            
             llm_segments = self._call_llm_for_segmentation(trajectory, task_info)
             
-            # 如果LLM切分失败或返回空，使用fallback
+            
             if not llm_segments:
                 print("[Info] LLM segmentation returned empty, using fallback")
                 llm_segments = self._fallback_segmentation(trajectory)
             
-            # 提取action序列并组装为Segment结构
+            
             segments = self._extract_action_sequences(llm_segments, trajectory, task_info)
             
-            # 过滤掉粒度不足的segment
+            
             valid_segments = [s for s in segments if self._validate_segment_granularity(s)]
             
             return valid_segments
@@ -112,7 +112,7 @@ class TraceSegmenter:
             print(f"[Error] Failed to segment trajectory: {e}")
             import traceback
             traceback.print_exc()
-            # 尝试使用fallback
+            
             try:
                 llm_segments = self._fallback_segmentation(trajectory)
                 segments = self._extract_action_sequences(llm_segments, trajectory, task_info)
@@ -134,33 +134,33 @@ class TraceSegmenter:
         if action is None:
             return "NONE"
         
-        # 如果已经是字符串，直接返回
+        
         if isinstance(action, str):
             return action.strip() if action.strip() else "NONE"
         
-        # 如果是Action对象（TypedDict，有action_type字段）
+        
         if isinstance(action, dict) and "action_type" in action:
             try:
                 from browser_env.actions import action2str
-                # 尝试使用action2str转换
+                
                 action_str = action2str(action, action_set_tag="id_accessibility_tree", semantic_element="")
-                # 移除语义信息部分，只保留action部分
+                
                 if " where " in action_str:
                     action_str = action_str.split(" where ")[0].strip()
                 return action_str
             except Exception as e:
-                # 如果转换失败，尝试手动构建
+                
                 try:
                     action_type = action.get("action_type", -1)
                     element_id = action.get("element_id", "")
                     
-                    # 根据action_type构建字符串
-                    if action_type == 0:  # CLICK
+                    
+                    if action_type == 0:  
                         return f"click [{element_id}]"
-                    elif action_type == 1:  # TYPE
+                    elif action_type == 1:  
                         text = action.get("text", [])
                         if isinstance(text, list):
-                            # 尝试转换text列表
+                            
                             try:
                                 from browser_env.actions import _id2key
                                 text_str = "".join([_id2key[i] for i in text if i < len(_id2key)])
@@ -169,36 +169,36 @@ class TraceSegmenter:
                         else:
                             text_str = str(text)
                         return f"type [{element_id}] [{text_str}] [0]"
-                    elif action_type == 2:  # HOVER
+                    elif action_type == 2:  
                         return f"hover [{element_id}]"
-                    elif action_type == 3:  # SCROLL
+                    elif action_type == 3:  
                         direction = action.get("direction", "down")
                         return f"scroll [{direction}]"
-                    elif action_type == 4:  # KEY_PRESS
+                    elif action_type == 4:  
                         key_comb = action.get("key_comb", "")
                         return f"press [{key_comb}]"
-                    elif action_type == 5:  # GOTO_URL
+                    elif action_type == 5:  
                         url = action.get("url", "")
                         return f"goto [{url}]"
                     else:
-                        # 其他类型，使用字符串表示
+                        
                         return str(action)
                 except Exception as e2:
-                    # 如果都失败了，返回字符串表示
+                    
                     return str(action)
         
-        # 如果是普通dict，尝试提取action相关字段
+        
         if isinstance(action, dict):
-            # 尝试提取常见的action字段
+            
             if "action" in action:
                 return self._normalize_action(action["action"])
             elif "action_type" in action:
-                return self._normalize_action(action)  # 递归处理
+                return self._normalize_action(action)  
             else:
-                # 普通dict，转换为字符串
+                
                 return str(action)
         
-        # 其他类型，转换为字符串
+        
         return str(action)
     
     def _call_llm_for_segmentation(
@@ -216,32 +216,32 @@ class TraceSegmenter:
         Returns:
             LLM返回的切分结果列表
         """
-        # 验证trajectory格式
+        
         if not trajectory or not isinstance(trajectory, list):
             print("[Warning] Invalid trajectory format, using empty segments")
             return []
         
-        # 构建轨迹摘要（只包含action信息，减少token消耗）
+        
         trajectory_summary = []
         valid_steps = 0
         for i, step in enumerate(trajectory):
-            # 支持多种trajectory格式
-            # 格式1: {"action": ..., "observation": ..., "url": ...}
-            # 格式2: Action对象（TypedDict）
-            # 格式3: StateInfo对象
+            
+            
+            
+            
             try:
                 if isinstance(step, dict):
                     action = step.get("action")
                     url = step.get("url", "")
                 else:
-                    # 如果是Action对象或其他格式
+                    
                     action = step
                     url = ""
                 
-                # 标准化action为字符串
+                
                 action_str = self._normalize_action(action)
                 
-                # 只记录有效的action（非NONE）
+                
                 if action_str and action_str != "NONE":
                     trajectory_summary.append({
                         "step": i,
@@ -253,12 +253,12 @@ class TraceSegmenter:
                 print(f"[Warning] Failed to process step {i}: {e}, skipping")
                 continue
         
-        # 如果没有有效的action，返回空列表
+        
         if valid_steps == 0:
             print("[Warning] No valid actions found in trajectory")
             return []
         
-        # 构建prompt
+        
         system_prompt = """你是一个轨迹分析专家。你的任务是将用户的操作轨迹切分为可复用的动作序列（segment）。
 
 每个segment应该：
@@ -285,21 +285,21 @@ segment_type可以是以下类型之一：
 {json.dumps(trajectory_summary, indent=2, ensure_ascii=False)}
 
 请返回JSON格式的切分结果，格式如下：
-{{
+{ 
   "segments": [
-    {{
+    { 
       "start_step": 0,
       "end_step": 3,
       "segment_type": "search",
       "description": "在搜索框中输入关键词并点击搜索按钮"
-    }},
+    } ,
     ...
   ]
-}}
+} 
 
 只返回JSON，不要其他文字。"""
         
-        # 调用LLM
+        
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
@@ -308,8 +308,8 @@ segment_type可以是以下类型之一：
         try:
             response = llm_utils.call_llm(self.llm_config, messages)
             
-            # 解析JSON响应
-            # 尝试提取JSON部分（可能包含markdown代码块）
+            
+            
             response = response.strip()
             if "```json" in response:
                 response = response.split("```json")[1].split("```")[0].strip()
@@ -320,7 +320,7 @@ segment_type可以是以下类型之一：
             return result.get("segments", [])
         except Exception as e:
             print(f"[Warning] LLM segmentation failed: {e}, using fallback")
-            # 如果LLM调用失败，使用简单的fallback：每个action作为一个segment
+            
             return self._fallback_segmentation(trajectory)
     
     def _fallback_segmentation(
@@ -335,20 +335,20 @@ segment_type可以是以下类型之一：
         
         for i, step in enumerate(trajectory):
             try:
-                # 支持多种trajectory格式
+                
                 if isinstance(step, dict):
                     action = step.get("action")
                 else:
                     action = step
                 
-                # 标准化action
+                
                 action_str = self._normalize_action(action)
                 
-                # 跳过无效的action
+                
                 if not action_str or action_str == "NONE":
                     continue
                 
-                # 简单判断action类型
+                
                 action_lower = action_str.lower()
                 if action_lower.startswith("click"):
                     segment_type = "nav"
@@ -400,7 +400,7 @@ segment_type可以是以下类型之一：
         """
         segments = []
         
-        # 验证输入
+        
         if not llm_segments:
             print("[Warning] No segments from LLM, returning empty list")
             return []
@@ -416,7 +416,7 @@ segment_type可以是以下类型之一：
                 segment_type = seg_info.get("segment_type", "other")
                 description = seg_info.get("description", f"{segment_type}操作")
                 
-                # 验证step范围
+                
                 if start_step > end_step:
                     print(f"[Warning] Invalid step range [{start_step}, {end_step}], skipping segment {seg_idx}")
                     continue
@@ -425,8 +425,8 @@ segment_type可以是以下类型之一：
                     print(f"[Warning] Step range [{start_step}, {end_step}] out of bounds, skipping segment {seg_idx}")
                     continue
                 
-                # 按「页面变化 action」切分：goto/go_back/new_tab 等不纳入 actions，仅作切分点；
-                # 该类 action 之后的部分作为新 segment，使用新 URL 作为 context。
+                
+                
                 sub_segment_start = start_step
                 actions = []
                 context_urls = []
@@ -444,11 +444,11 @@ segment_type可以是以下类型之一：
                         action_str = self._normalize_action(action)
                         
                         if is_page_change_action(action_str):
-                            # 先提交当前子片段（仅包含本页内的 actions，不含本次 goto 等）
+                            
                             if actions:
                                 from .url_utils import extract_site_and_page_from_url
                                 sites = task_info.get("sites", []) if isinstance(task_info, dict) else []
-                                # 使用本片段内「第一个」URL 作为上下文，表示这段动作最初发生的页面
+                                
                                 context_url = context_urls[0] if context_urls else ""
                                 site, page = extract_site_and_page_from_url(
                                     context_url, sites=sites, include_port=True
@@ -482,7 +482,7 @@ segment_type可以是以下类型之一：
                 
                 from .url_utils import extract_site_and_page_from_url
                 sites = task_info.get("sites", []) if isinstance(task_info, dict) else []
-                # 同样对整段最后的子片段，使用其内部第一个URL作为上下文
+                
                 context_url = context_urls[0] if context_urls else ""
                 site, page = extract_site_and_page_from_url(
                     context_url, sites=sites, include_port=True
@@ -517,9 +517,9 @@ segment_type可以是以下类型之一：
         if len(actions) < 2:
             return False
         
-        # 检查是否只包含重复操作
+        
         if len(actions) >= 2:
-            # 提取所有action的类型和element_id
+            
             action_types = []
             element_ids = []
             for action_str in actions:
@@ -541,7 +541,7 @@ segment_type可以是以下类型之一：
                 else:
                     action_types.append("other")
             
-            # 如果所有action都是同一类型且element_id相同，认为是重复操作
+            
             if len(set(action_types)) == 1 and len(set(element_ids)) == 1 and len(element_ids) > 0:
                 return False
         

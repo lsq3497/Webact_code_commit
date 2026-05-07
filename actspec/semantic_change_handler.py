@@ -58,7 +58,7 @@ def _get_observation_text_from_env(env: Any) -> str:
     return ""
 
 
-# URL/页面状态关键词：命中则视为「不可视为合理中间态」
+
 ERROR_LOGIN_CAPTCHA_EMPTY_PATTERNS = [
     "/error", "/login", "/captcha", "/signin",
     "error", "login", "captcha", "暂无内容", "not found", "404",
@@ -78,7 +78,7 @@ def cannot_consider_valid_intermediate_state(
     if current_step_idx >= len(plan):
         return False
     current_url = _get_url_from_env(env).lower()
-    # 1) URL 与 pre 或后续 step 的 target domain/路径不匹配，或页面处于 error/login/captcha/empty
+    
     for part in ERROR_LOGIN_CAPTCHA_EMPTY_PATTERNS:
         if part in current_url:
             return True
@@ -92,7 +92,7 @@ def cannot_consider_valid_intermediate_state(
                 return True
         except Exception:
             pass
-    # 2) 当前页面不存在后续 step 中任何一个 target 的 semantic anchor（保守：仅检查 locate 中的 semantic 条件）
+    
     locate = actspec.get("locate", {})
     target_elements = locate.get("target_elements", [])
     proc = _get_observation_processor_from_env(env)
@@ -147,7 +147,7 @@ def _infer_provider_from_model(model: str, default: str = "google") -> str:
     if m.startswith("anthropic/") or m.startswith("claude/"):
         return "anthropic"
     if m.startswith("huggingface/") or m.startswith("meta/") or m.startswith("mistral/"):
-        return "openai"  # OpenRouter 等统一走 openai 兼容接口
+        return "openai"  
     return default
 
 
@@ -168,7 +168,7 @@ def _call_llm_rewrite_plan(
     try:
         from pathlib import Path
         from llms import lm_config
-        # 使用与 eval_webarena 相同的 config 目录，加载统一配置以读取 llm_provider 与 models.agent_actor
+        
         config_dir = Path(__file__).resolve().parent.parent / "config"
         try:
             from config.config_loader import get_config
@@ -179,9 +179,9 @@ def _call_llm_rewrite_plan(
             return None
         if not model:
             model = "google/gemini-2.5-flash"
-        # 根据模型名自动识别 provider，默认 google
+        
         provider = _infer_provider_from_model(model, default="google")
-        # gen_config：优先用 actspec.llm_config 中的参数，缺省用合理默认
+        
         config = getattr(env, "global_config", None)
         actspec_cfg = getattr(config, "actspec", None) if config else None
         if actspec_cfg is not None and hasattr(actspec_cfg, "get"):
@@ -196,8 +196,8 @@ def _call_llm_rewrite_plan(
             "top_p": llm_dict.get("top_p", 1.0),
             "context_length": llm_dict.get("context_length", 0),
         }
-        # provider 根据模型配置自动识别（_infer_provider_from_model），默认 google；
-        # openai_utils 内部根据 llm_provider 选 OpenRouter 或直连
+        
+        
         lm_cfg = lm_config.LMConfig(
             provider=provider,
             model=model,

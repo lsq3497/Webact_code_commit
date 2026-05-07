@@ -29,7 +29,7 @@ class ElementContextExtractor:
         Returns:
             元素上下文字典
         """
-        # 1. 获取action执行前的observation（字符串格式）
+        
         if action_step_idx >= len(trajectory):
             return {}
         
@@ -39,20 +39,20 @@ class ElementContextExtractor:
         if not observation_text:
             return {}
         
-        # 2. 解析Accessibility Tree
+        
         tree = self.parser.parse(observation_text)
         
-        # 3. 查找元素及其上下文
+        
         element = self.parser.find_element_by_id(tree, element_id)
         if not element:
             return {}
         
         context = self.parser.get_element_context(tree, element_id)
         
-        # 4. 提取语义特征
+        
         semantic_features = self._extract_semantic_features(element)
         
-        # 5. 提取相对上下文
+        
         relative_context = self._extract_relative_context(context, tree)
         
         return {
@@ -84,7 +84,7 @@ class ElementContextExtractor:
             "modal": None
         }
         
-        # 提取父元素信息
+        
         parent = context.get("parent")
         if parent:
             relative_context["parent"] = {
@@ -93,7 +93,7 @@ class ElementContextExtractor:
                 "label": parent.get("label")
             }
         
-        # 提取兄弟元素信息
+        
         siblings = context.get("siblings", [])
         relative_context["siblings"] = [
             {
@@ -104,8 +104,8 @@ class ElementContextExtractor:
             for s in siblings
         ]
         
-        # 判断是否在form中（通过祖先元素判断）
-        # 改进：提取更详细的form信息
+        
+        
         ancestors = context.get("ancestors", [])
         for ancestor in ancestors:
             if ancestor.get("role") == "form":
@@ -117,14 +117,14 @@ class ElementContextExtractor:
                 }
                 break
         
-        # 判断是否在modal中（通过祖先元素判断，通常modal有特定role或label）
-        # 改进：提取更详细的modal信息，包括类型和状态
+        
+        
         for ancestor in ancestors:
             role = ancestor.get("role", "").lower()
             label = ancestor.get("label", "").lower()
             if "dialog" in role or "modal" in role or "modal" in label:
                 modal_type = "dialog" if "dialog" in role else "modal"
-                # 检查是否是alertdialog
+                
                 if "alert" in role:
                     modal_type = "alert"
                 

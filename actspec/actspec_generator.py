@@ -24,7 +24,7 @@ class ActSpecGenerator:
         """
         self.llm_config = llm_config
         if self.llm_config is None:
-            # 默认配置
+            
             self.llm_config = lm_config.LMConfig(
                 provider="openai",
                 model="gpt-4-turbo",
@@ -60,30 +60,30 @@ class ActSpecGenerator:
         Returns:
             ActSpec字典，包含7类信息
         """
-        # 提取参数定义
+        
         parameters = self._extract_parameters(action_sequence)
         
-        # 提取上下文信息
+        
         context_info = self._extract_context(action_sequence, context, task_info)
         
-        # 生成语义描述（使用LLM）
+        
         description = self._generate_description(action_sequence, context)
         
-        # 创建可执行计划
+        
         plan = self._create_executable_plan(action_sequence)
         
-        # 参数化plan：将参数值替换为占位符
+        
         plan = self._parameterize_plan(plan, parameters, action_sequence)
         
-        # 创建参数绑定规则
+        
         bindings = self._create_bindings(parameters, plan)
         
-        # 生成action_id和action_name
+        
         action_id, action_name = self._generate_action_identity(
             context_info, description, action_sequence
         )
         
-        # 新增：提取Locate
+        
         if trajectory is not None and segment_start_idx is not None:
             locate = self._extract_locate_strategies(
                 action_sequence, trajectory, segment_start_idx, parameters
@@ -91,7 +91,7 @@ class ActSpecGenerator:
         else:
             locate = {}
         
-        # 新增：提取Pre-condition
+        
         if trajectory is not None and segment_start_idx is not None:
             pre_condition = self._extract_pre_condition(
                 action_sequence, trajectory, segment_start_idx, context_info
@@ -99,7 +99,7 @@ class ActSpecGenerator:
         else:
             pre_condition = {}
         
-        # 新增：提取Post-condition
+        
         if trajectory is not None and segment_start_idx is not None and segment_end_idx is not None:
             post_condition = self._extract_post_condition(
                 action_sequence, trajectory, segment_start_idx, segment_end_idx, context_info
@@ -107,8 +107,8 @@ class ActSpecGenerator:
         else:
             post_condition = {}
         
-        # 组装ActSpec
-        # 动作历史前缀指纹：仅记录片段前若干步的动作类型序列（类型+顺序）
+        
+        
         action_history_prefix: List[str] = []
         if trajectory is not None and segment_start_idx is not None:
             try:
@@ -137,44 +137,44 @@ class ActSpecGenerator:
                 "generated_by": "llm_trace_segmentation",
                 "avg_steps": len(plan),
                 "usage_count": 0,
-                "confidence": 1.0,  # 新 lift 的 ActSpec 初始置信度为 1
+                "confidence": 1.0,  
             }
         }
         
-        # 使用LLM判断是否为失败场景，并区分负约束类型（论文：readiness / disambiguation）
+        
         is_failed, failure_reason, constraint_subtype = self._is_failed_actspec(
             actspec, action_sequence, context_info
         )
         
-        # 添加失败标记
+        
         if is_failed:
             actspec["is_failed"] = True
             actspec["failure_reason"] = failure_reason
             actspec["constraint_subtype"] = constraint_subtype
-            actspec["type"] = "negative_constraint_candidate"  # 标记为负约束候选
-            # 失败场景保留未参数化的 plan（具体 element_id），用于负约束精准规避
+            actspec["type"] = "negative_constraint_candidate"  
+            
             plan_before_param = copy.deepcopy(actspec.get("plan", []))
         else:
             actspec["is_failed"] = False
-            actspec["type"] = "executable_actspec"  # 标记为可执行ActSpec
+            actspec["type"] = "executable_actspec"  
             plan_before_param = None
         
-        # 二次检查：修复未参数化的值
+        
         actspec = self._post_process_parameterize(actspec, action_sequence)
         
-        # 从轨迹中填充参数的实际取值（candidates），确保后续能直接复用动作轨迹
+        
         actspec = self._fill_parameter_candidates_from_trajectory(actspec, action_sequence)
         
-        # 验证ActSpec的正确性
+        
         validation_errors = self._validate_actspec(actspec)
         if validation_errors:
             print(f"[Warning] ActSpec验证发现问题 ({actspec.get('action_id', 'unknown')}):")
             for error in validation_errors:
                 print(f"  - {error}")
-            # 尝试自动修复一些常见问题
+            
             actspec = self._auto_fix_actspec(actspec, validation_errors)
         
-        # 失败场景：恢复未参数化的 plan，使负约束使用具体 element_id 精准规避
+        
         if is_failed and plan_before_param:
             actspec["plan"] = plan_before_param
         
@@ -192,26 +192,26 @@ class ActSpecGenerator:
         """
         parameters = {}
         
-        # 分析action序列，识别可参数化的值
-        # 使用LLM辅助提取参数，结合上下文信息
+        
+        
         action_strs = [str(action) for action in action_sequence]
         action_summary = "\n".join([f"{i}: {a}" for i, a in enumerate(action_strs)])
         
-        # 提取action序列中的文本值和element_id，用于辅助参数识别
+        
         text_values = []
         element_ids = []
         for i, action_str in enumerate(action_strs):
-            # 提取type action中的文本
+            
             type_match = re.search(r"type\s*\[.*?\]\s*\[(.*?)\]\s*\[.*?\]", action_str)
             if type_match:
                 text = type_match.group(1).strip()
                 if text and len(text) > 0:
                     text_values.append(text)
-                # 提取type action的element_id
+                
                 type_id_match = re.search(r"type\s*\[(\d+)\]", action_str)
                 if type_id_match:
                     element_ids.append(f"type[{i}]: element_id={type_id_match.group(1)}")
-            # 提取click action的element_id
+            
             click_id_match = re.search(r"click\s*\[(\d+)\]", action_str, re.I)
             if click_id_match:
                 element_ids.append(f"click[{i}]: element_id={click_id_match.group(1)}")
@@ -249,24 +249,24 @@ Action序列：
 - 对于TYPE操作中的文本，应该提取为参数（如search_keyword、input_text等）
 
 返回JSON格式，例如：
-{{
-  "status": {{
+{ 
+  "status": { 
     "type": "enum",
     "candidates": ["pending", "paid", "shipped"],
     "description": "order status to filter",
     "optional": false
-  }},
-  "search_keyword": {{
+  } ,
+  "search_keyword": { 
     "type": "string",
     "optional": false,
     "description": "search keyword to query"
-  }},
-  "page_number": {{
+  } ,
+  "page_number": { 
     "type": "number",
     "optional": true,
     "description": "page number for pagination"
-  }}
-}}
+  } 
+} 
 
 只返回JSON，不要其他文字。"""
         
@@ -285,7 +285,7 @@ Action序列：
             
             parameters = json.loads(response)
             
-            # 验证参数格式，确保每个参数都有必要的字段
+            
             validated_parameters = {}
             for param_name, param_def in parameters.items():
                 if isinstance(param_def, dict):
@@ -298,7 +298,7 @@ Action序列：
                         validated_param["candidates"] = param_def["candidates"]
                     validated_parameters[param_name] = validated_param
                 else:
-                    # 如果格式不正确，跳过
+                    
                     continue
             
             parameters = validated_parameters
@@ -329,7 +329,7 @@ Action序列：
         page = context.get("page", "unknown")
         url = context.get("url", "")
         
-        # 从URL提取url_pattern（更智能的模式提取）
+        
         url_pattern = "/"
         if url:
             try:
@@ -337,9 +337,9 @@ Action序列：
                 parsed = urlparse(url)
                 path = parsed.path
                 
-                # 如果路径为空或只是"/"，根据page信息推断
+                
                 if not path or path == "/":
-                    # 根据page信息推断更具体的pattern
+                    
                     if page == "home":
                         url_pattern = "/"
                     elif page == "forum":
@@ -357,21 +357,21 @@ Action序列：
                     else:
                         url_pattern = "/"
                 else:
-                    # 提取路径模式：将数字ID、UUID等参数化
-                    # 例如：/orders/123 -> /orders/{id}
-                    # 例如：/admin/users/abc-123-def -> /admin/users/{id}
+                    
+                    
+                    
                     path_parts = path.split("/")
                     pattern_parts = []
                     for part in path_parts:
                         if not part:
                             continue
-                        # 检查是否是数字ID
+                        
                         if part.isdigit():
                             pattern_parts.append("{id}")
-                        # 检查是否是UUID格式
+                        
                         elif re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", part, re.I):
                             pattern_parts.append("{uuid}")
-                        # 检查是否是类似ID的字符串（包含数字和字母，长度>10）
+                        
                         elif re.match(r"^[a-zA-Z0-9_-]+$", part) and len(part) > 10:
                             pattern_parts.append("{id}")
                         else:
@@ -382,21 +382,21 @@ Action序列：
                     else:
                         url_pattern = "/"
                     
-                    # 如果有查询参数，也考虑参数化
+                    
                     query_params = parse_qs(parsed.query)
                     if query_params:
-                        # 对于常见的查询参数，保留参数名但参数化值
-                        # 例如：?page=1&status=pending -> ?page={page}&status={status}
+                        
+                        
                         param_patterns = []
                         for key, values in query_params.items():
                             if key in ["page", "limit", "offset", "id", "status", "type"]:
-                                param_patterns.append(f"{key}={{{key}}}")
+                                param_patterns.append(f"{key}={ {key}} ")
                             else:
-                                param_patterns.append(f"{key}={{{key}}}")
+                                param_patterns.append(f"{key}={ {key}} ")
                         if param_patterns:
                             url_pattern += "?" + "&".join(param_patterns)
             except Exception as e:
-                # 如果解析失败，根据page信息推断
+                
                 if page != "unknown":
                     if page == "home":
                         url_pattern = "/"
@@ -411,19 +411,19 @@ Action序列：
                 else:
                     url_pattern = "/"
         
-        # 从action序列推断required_elements（更智能的推断）
+        
         required_elements = []
         element_ids = set()
         
         for action in action_sequence:
             action_str = str(action).lower()
             
-            # 提取element_id
+            
             id_match = re.search(r"\[(\d+)\]", action_str)
             if id_match:
                 element_ids.add(id_match.group(1))
             
-            # 根据action类型推断需要的元素类型
+            
             if "click" in action_str:
                 required_elements.append("ClickableElement")
             elif "type" in action_str:
@@ -433,13 +433,13 @@ Action序列：
             elif "scroll" in action_str:
                 required_elements.append("ScrollableContainer")
             elif "goto" in action_str:
-                # 导航操作，不需要特定元素
+                
                 pass
         
-        # 使用LLM辅助推断更具体的元素类型（可选，如果action序列较长）
+        
         if len(action_sequence) > 3 and len(element_ids) > 0:
-            # 可以进一步使用LLM分析，但为了效率，这里简化处理
-            # 如果有很多不同的element_id，可能是列表或表格
+            
+            
             if len(element_ids) > 3:
                 required_elements.append("ListOrTableElement")
         
@@ -447,7 +447,7 @@ Action序列：
             "site": site,
             "page": page,
             "url_pattern": url_pattern,
-            "required_elements": sorted(list(set(required_elements)))  # 去重并排序
+            "required_elements": sorted(list(set(required_elements)))  
         }
         
         return context_info
@@ -491,11 +491,11 @@ Action序列：
 {action_summary}
 
 返回JSON格式：
-{{
+{ 
   "summary": "简短总结（一句话）",
   "when_to_use": "什么时候使用这个动作",
   "effect": "执行后的效果"
-}}
+} 
 
 只返回JSON，不要其他文字。"""
         
@@ -538,19 +538,19 @@ Action序列：
         for action in action_sequence:
             action_str = str(action).strip()
             
-            # 解析action字符串，支持更多格式
-            # 格式可能是：click [123] 或 type [123] [text] [0]
-            # 也可能包含语义信息：click [123] where [123] is button
             
-            # 移除语义信息部分（如果有）
+            
+            
+            
+            
             action_str_clean = action_str.split(" where ")[0].strip()
             
-            # goto/go_back/new_tab 等导致页面变化的 action 不纳入记录与复用，仅作切分标志
+            
             if is_page_change_action(action_str_clean):
                 continue
             
             if action_str_clean.startswith("click") or "#Click#" in action_str:
-                # click [id] 或 #Click# label
+                
                 match = re.search(r"click\s*\[(\d+)\]", action_str_clean)
                 if match:
                     element_id = match.group(1)
@@ -562,7 +562,7 @@ Action序列：
                         }
                     })
                 else:
-                    # 尝试匹配 #Click# 格式
+                    
                     match = re.search(r"#Click#\s*(.+)", action_str)
                     if match:
                         label = match.group(1).strip()
@@ -574,14 +574,14 @@ Action序列：
                             }
                         })
                     else:
-                        # 无法解析，保留原始信息
+                        
                         plan.append({
                             "primitive": "CLICK",
                             "raw": action_str
                         })
                         
             elif action_str_clean.startswith("type") or "#Type#" in action_str:
-                # type [id] [text] [enter_flag] 或 #Type# label text
+                
                 match = re.search(r"type\s*\[(\d+)\]\s*\[(.*?)\]\s*\[(\d+)\]", action_str_clean)
                 if match:
                     element_id = match.group(1)
@@ -594,11 +594,11 @@ Action序列：
                             "strategy": "element_id",
                             "value": element_id
                         },
-                        "text": text,  # 参数化会在后续步骤中处理
+                        "text": text,  
                         "enter": enter_flag == "1"
                     })
                 else:
-                    # 尝试匹配 #Type# 格式
+                    
                     match = re.search(r"#Type#\s*(.+?)\s+(.+)", action_str)
                     if match:
                         label = match.group(1).strip()
@@ -619,7 +619,7 @@ Action序列：
                         })
                         
             elif action_str_clean.startswith("hover") or "#Hover#" in action_str:
-                # hover [id] 或 #Hover# label
+                
                 match = re.search(r"hover\s*\[(\d+)\]", action_str_clean)
                 if match:
                     element_id = match.group(1)
@@ -648,7 +648,7 @@ Action序列：
                         })
                         
             elif action_str_clean.startswith("scroll") or "#Scroll" in action_str:
-                # scroll [up|down] 或 #Scroll_up# / #Scroll_down#
+                
                 match = re.search(r"scroll\s*\[?(up|down)\]?", action_str_clean, re.I)
                 if match:
                     direction = match.group(1).lower()
@@ -667,11 +667,11 @@ Action序列：
                     else:
                         plan.append({
                             "primitive": "SCROLL",
-                            "direction": "down"  # 默认向下
+                            "direction": "down"  
                         })
                         
             elif action_str_clean.startswith("goto") or "#Goto#" in action_str:
-                # goto [url] 或 #Goto# url
+                
                 match = re.search(r"goto\s*\[(.*?)\]", action_str_clean)
                 if match:
                     url = match.group(1)
@@ -694,7 +694,7 @@ Action序列：
                         })
                         
             elif action_str_clean.startswith("press") or "#Press#" in action_str:
-                # press [key_comb] 或 #Press# key_comb
+                
                 match = re.search(r"press\s*\[(.*?)\]", action_str_clean)
                 if match:
                     key_comb = match.group(1)
@@ -717,7 +717,7 @@ Action序列：
                         })
                         
             elif action_str_clean.startswith("select") or "#Select#" in action_str:
-                # select [id] [option] 或 #Select# label option
+                
                 match = re.search(r"select\s*\[(\d+)\]\s*\[(.*?)\]", action_str_clean)
                 if match:
                     element_id = match.group(1)
@@ -749,13 +749,11 @@ Action序列：
                             "raw": action_str
                         })
                         
-            # 控制类 / 元动作
-            elif action_str in ["stop", "go_back", "go_home", "new_tab", "close_tab"] or \
-                 action_str in ["#Go_backward#", "#Go_forward#", "#Exit#", "#Answer#"] or \
-                 action_str_clean.lower().startswith("stop "):
-                # 简单的导航和页面操作
+            
+            elif action_str in ["stop", "go_back", "go_home", "new_tab", "close_tab"] or                 action_str in ["#Go_backward#", "#Go_forward#", "#Exit#", "#Answer#"] or                 action_str_clean.lower().startswith("stop "):
+                
                 if action_str.startswith("stop") or action_str.startswith("#Answer#"):
-                    # 提取答案（如果有）
+                    
                     answer_match = re.search(r"stop\s*\[(.*?)\]", action_str)
                     if answer_match:
                         answer = answer_match.group(1)
@@ -800,20 +798,20 @@ Action序列：
                     plan.append({
                         "primitive": primitive_name
                     })
-            # meta 指令（branch / prune）仅用于规划，不进入可执行 plan / 负约束
+            
             elif action_str_clean.lower().startswith("branch") or action_str_clean.lower().startswith("prune"):
                 continue
             elif action_str_clean.strip().lower().startswith("note ") or action_str_clean.strip().lower().startswith("note["):
-                # note 为文本备忘录供 LLM 后续记忆，不纳入可执行 plan，不参与 ActSpec/负约束
+                
                 continue
             else:
-                # 其他action类型，尝试推断；meta（branch/prune/stop）已在上面分支中跳过
+                
                 plan.append({
                     "primitive": "UNKNOWN",
                     "raw": action_str
                 })
         
-        # STOP 等控制类 action 仅表示任务结束/答题，不作为可执行步骤纳入 plan，复用时也不需重放
+        
         plan = [s for s in plan if s.get("primitive") != "STOP"]
         return plan
     
@@ -845,16 +843,16 @@ Action序列：
         import copy
         parameterized_plan = copy.deepcopy(plan)
         
-        # 提取action序列中的值，用于匹配参数
+        
         action_values = {}
         for i, action in enumerate(action_sequence):
             action_str = str(action)
-            # 提取element_id
+            
             id_match = re.search(r"\[(\d+)\]", action_str)
             if id_match:
                 element_id = id_match.group(1)
                 action_values[i] = {"element_id": element_id}
-            # 提取type action中的文本
+            
             type_match = re.search(r"type\s*\[.*?\]\s*\[(.*?)\]\s*\[.*?\]", action_str)
             if type_match:
                 text = type_match.group(1).strip()
@@ -863,16 +861,16 @@ Action序列：
                         action_values[i] = {}
                     action_values[i]["text"] = text
         
-        # 将参数按类型分类
-        element_id_params = {}  # number类型，用于target.value
-        text_params = {}  # string类型，用于text字段
+        
+        element_id_params = {}  
+        text_params = {}  
         
         for param_name, param_def in parameters.items():
             param_type = param_def.get("type", "string")
             param_desc = param_def.get("description", "").lower()
             param_name_lower = param_name.lower()
             
-            # 判断参数用途
+            
             is_element_id = (
                 param_type == "number" and (
                     "id" in param_name_lower or
@@ -905,9 +903,9 @@ Action序列：
             if is_text_input:
                 text_params[param_name] = param_def
         
-        # 有序列表：多个 TYPE/CLICK 步骤需按顺序分配不同参数（避免所有 TYPE 都绑到 input_text_1）
+        
         text_params_ordered = sorted(text_params.keys())
-        # 区分用于 TYPE 的 element_id（input_id 等）与用于 CLICK 的（click_id 等）
+        
         input_id_params_ordered = sorted(
             [p for p in element_id_params if "input" in p.lower() or ("type" in p.lower() and "click" not in p.lower())]
         )
@@ -924,13 +922,13 @@ Action序列：
         type_step_index = 0
         click_step_index = 0
         
-        # 遍历plan，进行参数化
+        
         for step_idx, step in enumerate(parameterized_plan):
             primitive = step.get("primitive", "").upper()
             
-            # 处理TYPE操作
+            
             if primitive == "TYPE":
-                # 1. 参数化target.value（element_id）- 按 TYPE 步骤顺序分配 input_id_1, input_id_2, ...
+                
                 if "target" in step and "value" in step.get("target", {}):
                     target_value = step.get("target", {}).get("value", "")
                     if target_value and target_value.isdigit():
@@ -944,9 +942,9 @@ Action序列：
                         if not matched_param and element_id_params:
                             matched_param = list(element_id_params.keys())[0]
                         if matched_param:
-                            step["target"]["value"] = f"{{{{{matched_param}}}}}"
+                            step["target"]["value"] = f"{ { {matched_param}} } "
                 
-                # 2. 参数化text字段 - 按 TYPE 步骤顺序分配 input_text_1, input_text_2, ...
+                
                 if "text" in step:
                     text_value = step.get("text", "")
                     if text_value and not text_value.startswith("{{"):
@@ -960,13 +958,13 @@ Action序列：
                         if not matched_param and text_params:
                             matched_param = list(text_params.keys())[0]
                         if matched_param:
-                            step["text"] = f"{{{{{matched_param}}}}}"
+                            step["text"] = f"{ { {matched_param}} } "
                 
                 type_step_index += 1
             
-            # 处理CLICK操作
+            
             elif primitive == "CLICK":
-                # 参数化target.value（element_id）- 按 CLICK 步骤顺序分配 click_id_1, click_id_2, ...
+                
                 if "target" in step and "value" in step.get("target", {}):
                     target_value = step.get("target", {}).get("value", "")
                     if target_value and target_value.isdigit():
@@ -980,30 +978,30 @@ Action序列：
                         if not matched_param and element_id_params:
                             matched_param = list(element_id_params.keys())[0]
                         if matched_param:
-                            step["target"]["value"] = f"{{{{{matched_param}}}}}"
+                            step["target"]["value"] = f"{ { {matched_param}} } "
                         click_step_index += 1
             
-            # 处理SELECT操作的option字段
+            
             elif primitive == "SELECT" and "option" in step:
                 option_value = step.get("option", "")
                 if option_value and not option_value.startswith("{{"):
-                    # 查找匹配的参数（enum或string类型）
+                    
                     for param_name, param_def in parameters.items():
                         param_desc = param_def.get("description", "").lower()
                         if ("status" in param_desc or "type" in param_desc or 
                             "option" in param_desc or "select" in param_desc):
-                            step["option"] = f"{{{{{param_name}}}}}"
+                            step["option"] = f"{ { {param_name}} } "
                             break
             
-            # 处理GOTO操作的url字段
+            
             elif primitive == "GOTO" and "url" in step:
                 url_value = step.get("url", "")
                 if url_value and not url_value.startswith("{{"):
-                    # 查找匹配的url参数
+                    
                     for param_name, param_def in parameters.items():
                         param_desc = param_def.get("description", "").lower()
                         if "url" in param_desc or "link" in param_desc:
-                            step["url"] = f"{{{{{param_name}}}}}"
+                            step["url"] = f"{ { {param_name}} } "
                             break
         
         return parameterized_plan
@@ -1025,12 +1023,12 @@ Action序列：
         """
         bindings = {}
         
-        # 如果没有参数，返回空绑定
+        
         if not parameters:
             return bindings
         
-        # 使用LLM辅助分析参数应该绑定到哪里
-        # 首先，我们需要识别plan中哪些值应该被参数化
+        
+        
         plan_str = json.dumps(plan, indent=2, ensure_ascii=False)
         param_names = list(parameters.keys())
         param_descriptions = {name: params.get("description", "") for name, params in parameters.items()}
@@ -1053,18 +1051,18 @@ Action序列：
 {plan_str}
 
 返回JSON格式，例如：
-{{
-  "search_keyword": {{
+{ 
+  "search_keyword": { 
     "bind_to": [
-      {{"step": 0, "field": "text"}}
+      { "step": 0, "field": "text"} 
     ]
-  }},
-  "status": {{
+  } ,
+  "status": { 
     "bind_to": [
-      {{"step": 1, "field": "target.value"}}
+      { "step": 1, "field": "target.value"} 
     ]
-  }}
-}}
+  } 
+} 
 
 只返回JSON，不要其他文字。"""
         
@@ -1083,12 +1081,12 @@ Action序列：
             
             llm_bindings = json.loads(response)
             
-            # 验证并合并LLM生成的绑定
+            
             for param_name in parameters.keys():
                 if param_name in llm_bindings:
                     bind_info = llm_bindings[param_name]
                     if "bind_to" in bind_info and isinstance(bind_info["bind_to"], list):
-                        # 验证绑定位置是否有效
+                        
                         valid_bindings = []
                         for bind_rule in bind_info["bind_to"]:
                             step_idx = bind_rule.get("step")
@@ -1104,10 +1102,10 @@ Action序列：
                             }
         except Exception as e:
             print(f"[Warning] LLM binding generation failed: {e}, using fallback method")
-            # Fallback: 使用简单的占位符匹配方法
+            
             bindings = self._create_bindings_fallback(parameters, plan)
         
-        # 如果没有生成绑定，使用fallback方法
+        
         if not bindings:
             bindings = self._create_bindings_fallback(parameters, plan)
         
@@ -1130,18 +1128,18 @@ Action序列：
         """
         bindings = {}
         
-        # 分析plan，找到需要绑定的位置
+        
         for param_name in parameters.keys():
             param_bindings = []
             
-            # 遍历plan，查找包含该参数占位符的位置
+            
             for step_idx, step in enumerate(plan):
                 step_str = json.dumps(step)
                 
-                # 检查是否包含参数占位符
-                placeholder = f"{{{{{param_name}}}}}"
+                
+                placeholder = f"{ { {param_name}} } "
                 if placeholder in step_str:
-                    # 找到需要绑定的字段
+                    
                     if "text" in step and placeholder in str(step.get("text", "")):
                         param_bindings.append({
                             "step": step_idx,
@@ -1174,32 +1172,29 @@ Action序列：
                             "field": "answer"
                         })
             
-            # 如果没有找到占位符，尝试基于参数类型和plan内容进行智能推断
+            
             if not param_bindings:
                 param_type = parameters[param_name].get("type", "string")
                 param_desc = parameters[param_name].get("description", "").lower()
                 
-                # 根据参数描述和类型推断可能的绑定位置
+                
                 for step_idx, step in enumerate(plan):
                     primitive = step.get("primitive", "").upper()
                     
-                    # 如果参数描述包含"search"、"keyword"、"text"等，可能绑定到TYPE的text字段
-                    if ("search" in param_desc or "keyword" in param_desc or "text" in param_desc) and \
-                       primitive == "TYPE" and "text" in step:
+                    
+                    if ("search" in param_desc or "keyword" in param_desc or "text" in param_desc) and                       primitive == "TYPE" and "text" in step:
                         param_bindings.append({
                             "step": step_idx,
                             "field": "text"
                         })
-                    # 如果参数描述包含"status"、"type"、"option"等，可能绑定到SELECT的option字段
-                    elif ("status" in param_desc or "type" in param_desc or "option" in param_desc) and \
-                         primitive == "SELECT" and "option" in step:
+                    
+                    elif ("status" in param_desc or "type" in param_desc or "option" in param_desc) and                         primitive == "SELECT" and "option" in step:
                         param_bindings.append({
                             "step": step_idx,
                             "field": "option"
                         })
-                    # 如果参数是URL相关的，可能绑定到GOTO的url字段
-                    elif ("url" in param_desc or "link" in param_desc) and \
-                         primitive == "GOTO" and "url" in step:
+                    
+                    elif ("url" in param_desc or "link" in param_desc) and                         primitive == "GOTO" and "url" in step:
                         param_bindings.append({
                             "step": step_idx,
                             "field": "url"
@@ -1233,7 +1228,7 @@ Action序列：
         page = context.get("page", "unknown")
         summary = description.get("summary", "action")
         
-        # 使用LLM生成更有意义的action_name
+        
         system_prompt = """你是一个命名专家。根据动作描述生成一个简洁、清晰的PascalCase动作名称。
 
 命名规则：
@@ -1271,30 +1266,30 @@ Action序列：
             response = llm_utils.call_llm(self.llm_config, messages)
             action_name = response.strip()
             
-            # 清理响应，移除可能的markdown格式
+            
             if "```" in action_name:
                 action_name = action_name.split("```")[-1].strip()
             
-            # 验证名称格式
+            
             if not action_name or len(action_name) < 3:
                 raise ValueError("Generated name too short")
             
-            # 确保是PascalCase格式
-            # 移除空格和特殊字符，转换为PascalCase
+            
+            
             words = re.findall(r'\b\w+\b', action_name)
             if words:
                 action_name = ''.join(word.capitalize() for word in words)
             else:
-                # 如果解析失败，使用fallback方法
+                
                 action_name = summary.title().replace(" ", "").replace(".", "").replace(",", "")
                 if not action_name:
                     action_name = "Action"
         except Exception as e:
             print(f"[Warning] Action name generation failed: {e}, using fallback")
-            # Fallback: 使用summary生成action_name
+            
             words = re.findall(r'\b\w+\b', summary)
             if words:
-                # 取前3-4个关键词，转换为PascalCase
+                
                 key_words = [w.capitalize() for w in words[:4]]
                 action_name = ''.join(key_words)
             else:
@@ -1303,8 +1298,8 @@ Action序列：
             if not action_name or len(action_name) < 3:
                 action_name = "Action"
         
-        # 生成action_id: site.page.action_name (小写，使用下划线分隔)
-        # 将PascalCase转换为snake_case
+        
+        
         snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', action_name).lower()
         action_id = f"{site}.{page}.{snake_case}"
         
@@ -1328,21 +1323,21 @@ Action序列：
             (is_failed: bool, failure_reason: str, constraint_subtype: str) 元组。
             constraint_subtype 为 "readiness" | "disambiguation" | "unspecified" 之一。
         """
-        # 预检查：如果action序列或plan中包含stop类型的action，不应该识别为失败场景
-        # stop类型的action是手动实现的正常停止，不算错误
+        
+        
         plan = actspec.get("plan", [])
         
-        # 检查action序列中是否包含stop类型的action
-        # stop类型的action是手动实现的正常停止，不应该被认为是失败场景
+        
+        
         for action in action_sequence:
             action_str = str(action).strip().lower()
-            # 检查是否是stop类型的action
-            # 格式可能是: "stop [N/A - ...]" 或 "stop [...]" 等
+            
+            
             if action_str.startswith("stop") or "stop [" in action_str:
                 print(f"[过滤] 检测到stop类型的action，跳过失败检测: {action_str[:100]}")
                 return False, "", "unspecified"
         
-        # 检查plan中是否包含stop primitive
+        
         for step in plan:
             primitive = step.get("primitive", "")
             raw = step.get("raw", "")
@@ -1353,7 +1348,7 @@ Action序列：
         action_name = actspec.get("action_name", "")
         action_id = actspec.get("action_id", "")
         
-        # 构建用于判断的信息
+        
         plan_str = json.dumps(plan, indent=2, ensure_ascii=False)
         description_str = json.dumps(description, indent=2, ensure_ascii=False)
         action_sequence_str = "\n".join([f"{i}: {str(a)}" for i, a in enumerate(action_sequence)])
@@ -1399,12 +1394,12 @@ Description（描述）：
 {description_str}
 
 请返回JSON格式：
-{{
+{ 
   "is_failed": true/false,
   "failure_reason": "如果is_failed为true，说明失败原因；如果为false，可以为空字符串",
   "constraint_subtype": "仅当is_failed为true时必填，且必须为以下之一：readiness（页面未就绪时就执行了动作，如刚跳转/弹窗后立即操作导致无效果）、disambiguation（页面上多个相似元素时反复选错同一类目标）、unspecified（其他失败类型）",
   "confidence": 0.0-1.0之间的置信度
-}}
+} 
 
 只返回JSON，不要其他文字。"""
         
@@ -1417,7 +1412,7 @@ Description（描述）：
             response = llm_utils.call_llm(self.llm_config, messages)
             response = response.strip()
             
-            # 提取JSON部分
+            
             if "```json" in response:
                 response = response.split("```json")[1].split("```")[0].strip()
             elif "```" in response:
@@ -1431,7 +1426,7 @@ Description（描述）：
             if constraint_subtype not in ("readiness", "disambiguation", "unspecified"):
                 constraint_subtype = "unspecified"
             
-            # 如果置信度较低，可以添加额外的验证逻辑
+            
             if is_failed and confidence < 0.6:
                 print(f"[Warning] 低置信度的失败判断 (confidence={confidence}): {action_id}")
             
@@ -1439,7 +1434,7 @@ Description（描述）：
             
         except Exception as e:
             print(f"[Warning] LLM失败检测失败: {e}, 使用fallback方法")
-            # Fallback: 使用简单的启发式规则，不区分子类型
+            
             return self._is_failed_actspec_fallback(actspec), "", "unspecified"
     
     def _is_failed_actspec_fallback(self, actspec: Dict[str, Any]) -> bool:
@@ -1454,23 +1449,23 @@ Description（描述）：
         """
         plan = actspec.get("plan", [])
         
-        # 首先检查plan中是否包含stop primitive（不应该被认为是失败）
+        
         for step in plan:
             primitive = step.get("primitive", "")
             raw = step.get("raw", "")
             if primitive == "STOP" or (isinstance(raw, str) and raw.strip().lower().startswith("stop")):
-                # stop类型的action是正常停止，不是失败
+                
                 return False
         
-        # 检查plan中是否包含UNKNOWN primitive（排除stop类型；排除note——note为备忘录不视为失败）
+        
         for step in plan:
             if step.get("primitive") == "UNKNOWN":
                 raw = step.get("raw", "") or ""
                 if isinstance(raw, str) and raw.strip().lower().startswith("note"):
-                    continue  # note 不视为失败
+                    continue  
                 return True
         
-        # 检查action_name中是否包含明显的失败关键词
+        
         action_name = actspec.get("action_name", "").lower()
         if any(keyword in action_name for keyword in ["failed", "error", "attempt", "失败", "错误"]):
             return True
@@ -1492,28 +1487,28 @@ Description（描述）：
         plan = actspec.get("plan", [])
         bindings = actspec.get("bindings", {})
         
-        # 1. 检查所有bindings中引用的参数都在parameters中定义
+        
         for param_name in bindings.keys():
             if param_name not in parameters:
                 errors.append(f"绑定中引用的参数 '{param_name}' 未在parameters中定义")
         
-        # 2. 检查所有parameters中定义的参数都在plan中有对应的占位符或绑定
+        
         plan_str = json.dumps(plan, ensure_ascii=False)
         for param_name in parameters.keys():
-            placeholder = f"{{{{{param_name}}}}}"
+            placeholder = f"{ { {param_name}} } "
             has_placeholder = placeholder in plan_str
             has_binding = param_name in bindings
             
             if not has_placeholder and not has_binding:
                 errors.append(f"参数 '{param_name}' 在plan中没有占位符，也没有绑定规则")
         
-        # 3. 检查text字段不使用number类型参数
+        
         for step_idx, step in enumerate(plan):
             primitive = step.get("primitive", "").upper()
             
             if primitive == "TYPE" and "text" in step:
                 text_value = str(step.get("text", ""))
-                # 检查是否是占位符
+                
                 if text_value.startswith("{{") and text_value.endswith("}}"):
                     param_name = text_value[2:-2]
                     if param_name in parameters:
@@ -1524,7 +1519,7 @@ Description（描述）：
                                 f"应该使用string类型参数"
                             )
             
-            # 4. 检查target.value字段（当是element_id时）使用number类型参数
+            
             if primitive in ["CLICK", "TYPE"] and "target" in step:
                 target_value = step.get("target", {}).get("value", "")
                 if target_value and target_value.startswith("{{") and target_value.endswith("}}"):
@@ -1537,7 +1532,7 @@ Description（描述）：
                                 f"应该使用number类型参数（element_id）"
                             )
         
-        # 5. 检查bindings中的step索引是否有效
+        
         for param_name, binding_info in bindings.items():
             bind_to = binding_info.get("bind_to", [])
             for bind_rule in bind_to:
@@ -1567,7 +1562,7 @@ Description（描述）：
         plan = fixed_actspec.get("plan", [])
         bindings = fixed_actspec.get("bindings", {})
         
-        # 修复：text字段使用了number类型参数
+        
         for step_idx, step in enumerate(plan):
             primitive = step.get("primitive", "").upper()
             
@@ -1578,7 +1573,7 @@ Description（描述）：
                     if param_name in parameters:
                         param_type = parameters[param_name].get("type", "string")
                         if param_type == "number":
-                            # 查找合适的string类型参数
+                            
                             for p_name, p_def in parameters.items():
                                 if p_def.get("type") == "string" and (
                                     "text" in p_name.lower() or
@@ -1586,15 +1581,15 @@ Description（描述）：
                                     "search" in p_name.lower() or
                                     "input" in p_name.lower()
                                 ):
-                                    step["text"] = f"{{{{{p_name}}}}}"
-                                    # 更新bindings
+                                    step["text"] = f"{ { {p_name}} } "
+                                    
                                     if p_name not in bindings:
                                         bindings[p_name] = {"bind_to": []}
                                     bindings[p_name]["bind_to"].append({
                                         "step": step_idx,
                                         "field": "text"
                                     })
-                                    # 移除错误的绑定
+                                    
                                     if param_name in bindings:
                                         bindings[param_name]["bind_to"] = [
                                             b for b in bindings[param_name]["bind_to"]
@@ -1602,7 +1597,7 @@ Description（描述）：
                                         ]
                                     break
         
-        # 修复：target.value字段使用了非number类型参数
+        
         for step_idx, step in enumerate(plan):
             primitive = step.get("primitive", "").upper()
             
@@ -1613,7 +1608,7 @@ Description（描述）：
                     if param_name in parameters:
                         param_type = parameters[param_name].get("type", "string")
                         if param_type != "number":
-                            # 查找合适的number类型参数
+                            
                             for p_name, p_def in parameters.items():
                                 if p_def.get("type") == "number" and (
                                     "id" in p_name.lower() or
@@ -1623,15 +1618,15 @@ Description（描述）：
                                     "type" in p_name.lower() or
                                     "input" in p_name.lower()
                                 ):
-                                    step["target"]["value"] = f"{{{{{p_name}}}}}"
-                                    # 更新bindings
+                                    step["target"]["value"] = f"{ { {p_name}} } "
+                                    
                                     if p_name not in bindings:
                                         bindings[p_name] = {"bind_to": []}
                                     bindings[p_name]["bind_to"].append({
                                         "step": step_idx,
                                         "field": "target.value"
                                     })
-                                    # 移除错误的绑定
+                                    
                                     if param_name in bindings:
                                         bindings[param_name]["bind_to"] = [
                                             b for b in bindings[param_name]["bind_to"]
@@ -1670,28 +1665,28 @@ Description（描述）：
         if not plan or not parameters:
             return fixed_actspec
         
-        # 检查是否有未参数化的值
+        
         has_unparameterized = False
         for step in plan:
-            # 检查 target.value
+            
             if "target" in step and "value" in step.get("target", {}):
                 value = step.get("target", {}).get("value", "")
                 if value and not self._is_placeholder(value):
                     has_unparameterized = True
                     break
-            # 检查 text 字段
+            
             if "text" in step:
                 text = step.get("text", "")
                 if text and not self._is_placeholder(text):
                     has_unparameterized = True
                     break
-            # 检查 option 字段
+            
             if "option" in step:
                 option = step.get("option", "")
                 if option and not self._is_placeholder(option):
                     has_unparameterized = True
                     break
-            # 检查 url 字段
+            
             if "url" in step:
                 url = step.get("url", "")
                 if url and not self._is_placeholder(url):
@@ -1701,19 +1696,19 @@ Description（描述）：
         if not has_unparameterized:
             return fixed_actspec
         
-        # 使用LLM辅助修复未参数化的值
+        
         print(f"[PostProcess] 检测到未参数化的值，开始修复 ActSpec: {actspec.get('action_id', 'unknown')}")
         
-        # 提取action序列中的值，用于匹配
+        
         action_values = {}
         for i, action in enumerate(action_sequence):
             action_str = str(action)
-            # 提取element_id
+            
             id_match = re.search(r"\[(\d+)\]", action_str)
             if id_match:
                 element_id = id_match.group(1)
                 action_values[i] = {"element_id": element_id}
-            # 提取type action中的文本
+            
             type_match = re.search(r"type\s*\[.*?\]\s*\[(.*?)\]\s*\[.*?\]", action_str)
             if type_match:
                 text = type_match.group(1).strip()
@@ -1722,18 +1717,18 @@ Description（描述）：
                         action_values[i] = {}
                     action_values[i]["text"] = text
         
-        # 按类型分类参数
-        element_id_params = {}  # number类型或enum类型（candidates是数字），用于target.value (element_id strategy)
-        text_params = {}  # string类型，用于text字段
-        enum_params = {}  # enum类型，用于option字段
-        url_params = {}  # string类型，用于url字段
+        
+        element_id_params = {}  
+        text_params = {}  
+        enum_params = {}  
+        url_params = {}  
         
         for param_name, param_def in parameters.items():
             param_type = param_def.get("type", "string")
             param_desc = param_def.get("description", "").lower()
             param_name_lower = param_name.lower()
             
-            # element_id参数：number类型，或enum类型但candidates是数字
+            
             is_element_id_param = False
             if param_type == "number" and (
                 "id" in param_name_lower or
@@ -1745,10 +1740,10 @@ Description（描述）：
             ):
                 is_element_id_param = True
             elif param_type == "enum":
-                # 检查candidates是否都是数字
+                
                 candidates = param_def.get("candidates", [])
                 if candidates and all(isinstance(c, (int, float)) or (isinstance(c, str) and c.isdigit()) for c in candidates):
-                    # 如果参数名或描述中包含id、element、button、click等，认为是element_id参数
+                    
                     if ("id" in param_name_lower or
                         "element" in param_name_lower or
                         "button" in param_name_lower or
@@ -1776,27 +1771,27 @@ Description（描述）：
             ):
                 url_params[param_name] = param_def
         
-        # 遍历plan，修复未参数化的值
+        
         for step_idx, step in enumerate(plan):
             primitive = step.get("primitive", "").upper()
             
-            # 修复 target.value（当strategy是element_id时，应该使用number类型参数）
+            
             if "target" in step and "value" in step.get("target", {}):
                 target = step.get("target", {})
                 strategy = target.get("strategy", "")
                 value = target.get("value", "")
                 
                 if value and not self._is_placeholder(value):
-                    # 根据strategy类型选择参数
+                    
                     if strategy == "element_id":
-                        # 应该使用number类型的element_id参数
+                        
                         matched_param = None
                         
-                        # 尝试从action序列中匹配
+                        
                         if step_idx in action_values:
                             action_element_id = action_values[step_idx].get("element_id")
                             if action_element_id == str(value):
-                                # 根据primitive类型和参数名匹配
+                                
                                 if primitive == "CLICK":
                                     for param_name in element_id_params:
                                         if "click" in param_name.lower() or "button" in param_name.lower():
@@ -1808,13 +1803,13 @@ Description（描述）：
                                             matched_param = param_name
                                             break
                         
-                        # 如果没有匹配到，使用第一个element_id参数
+                        
                         if not matched_param and element_id_params:
                             matched_param = list(element_id_params.keys())[0]
                         
-                        # 如果仍然没有参数，自动创建一个
+                        
                         if not matched_param:
-                            # 根据primitive类型自动创建参数
+                            
                             if primitive == "CLICK":
                                 param_name = "click_id"
                             elif primitive == "TYPE":
@@ -1826,14 +1821,14 @@ Description（描述）：
                             else:
                                 param_name = "element_id"
                             
-                            # 确保参数名唯一（如果已存在，添加后缀）
+                            
                             base_name = param_name
                             counter = 1
                             while param_name in parameters:
                                 param_name = f"{base_name}_{counter}"
                                 counter += 1
                             
-                            # 创建新参数
+                            
                             parameters[param_name] = {
                                 "type": "number",
                                 "description": f"element id for {primitive.lower()} operation",
@@ -1844,11 +1839,11 @@ Description（描述）：
                             print(f"[PostProcess] 自动创建参数: {param_name}")
                         
                         if matched_param:
-                            target["value"] = f"{{{{{matched_param}}}}}"
-                            # 更新bindings
+                            target["value"] = f"{ { {matched_param}} } "
+                            
                             if matched_param not in bindings:
                                 bindings[matched_param] = {"bind_to": []}
-                            # 检查是否已存在绑定
+                            
                             existing_binding = False
                             for bind_rule in bindings[matched_param]["bind_to"]:
                                 if bind_rule.get("step") == step_idx and bind_rule.get("field") == "target.value":
@@ -1859,19 +1854,19 @@ Description（描述）：
                                     "step": step_idx,
                                     "field": "target.value"
                                 })
-                            print(f"[PostProcess] 修复 step[{step_idx}].target.value: '{value}' -> '{{{{{matched_param}}}}}'")
+                            print(f"[PostProcess] 修复 step[{step_idx}].target.value: '{value}' -> '{ { {matched_param}} } '")
             
-            # 修复 text 字段（应该使用string类型参数）
+            
             if "text" in step:
                 text = step.get("text", "")
                 if text and not self._is_placeholder(text):
                     matched_param = None
                     
-                    # 尝试从action序列中匹配
+                    
                     if step_idx in action_values:
                         action_text = action_values[step_idx].get("text")
                         if action_text == text:
-                            # 根据参数名匹配
+                            
                             for param_name in text_params:
                                 if "search" in param_name.lower() or "keyword" in param_name.lower():
                                     matched_param = param_name
@@ -1880,22 +1875,22 @@ Description（描述）：
                                     if not matched_param:
                                         matched_param = param_name
                     
-                    # 如果没有匹配到，使用第一个text参数
+                    
                     if not matched_param and text_params:
                         matched_param = list(text_params.keys())[0]
                     
-                    # 如果仍然没有，使用LLM辅助匹配
+                    
                     if not matched_param:
                         matched_param = self._llm_match_parameter(
                             text, "text", primitive, text_params, parameters
                         )
                     
                     if matched_param:
-                        step["text"] = f"{{{{{matched_param}}}}}"
-                        # 更新bindings
+                        step["text"] = f"{ { {matched_param}} } "
+                        
                         if matched_param not in bindings:
                             bindings[matched_param] = {"bind_to": []}
-                        # 检查是否已存在绑定
+                        
                         existing_binding = False
                         for bind_rule in bindings[matched_param]["bind_to"]:
                             if bind_rule.get("step") == step_idx and bind_rule.get("field") == "text":
@@ -1906,29 +1901,29 @@ Description（描述）：
                                 "step": step_idx,
                                 "field": "text"
                             })
-                        print(f"[PostProcess] 修复 step[{step_idx}].text: '{text}' -> '{{{{{matched_param}}}}}'")
+                        print(f"[PostProcess] 修复 step[{step_idx}].text: '{text}' -> '{ { {matched_param}} } '")
             
-            # 修复 option 字段（应该使用enum或string类型参数）
+            
             if "option" in step:
                 option = step.get("option", "")
                 if option and not self._is_placeholder(option):
                     matched_param = None
                     
-                    # 优先使用enum类型参数
+                    
                     if enum_params:
                         matched_param = list(enum_params.keys())[0]
                     else:
-                        # 使用LLM辅助匹配
+                        
                         matched_param = self._llm_match_parameter(
                             option, "option", primitive, parameters, parameters
                         )
                     
                     if matched_param:
-                        step["option"] = f"{{{{{matched_param}}}}}"
-                        # 更新bindings
+                        step["option"] = f"{ { {matched_param}} } "
+                        
                         if matched_param not in bindings:
                             bindings[matched_param] = {"bind_to": []}
-                        # 检查是否已存在绑定
+                        
                         existing_binding = False
                         for bind_rule in bindings[matched_param]["bind_to"]:
                             if bind_rule.get("step") == step_idx and bind_rule.get("field") == "option":
@@ -1939,29 +1934,29 @@ Description（描述）：
                                 "step": step_idx,
                                 "field": "option"
                             })
-                        print(f"[PostProcess] 修复 step[{step_idx}].option: '{option}' -> '{{{{{matched_param}}}}}'")
+                        print(f"[PostProcess] 修复 step[{step_idx}].option: '{option}' -> '{ { {matched_param}} } '")
             
-            # 修复 url 字段（应该使用string类型参数）
+            
             if "url" in step:
                 url = step.get("url", "")
                 if url and not self._is_placeholder(url):
                     matched_param = None
                     
-                    # 优先使用url相关参数
+                    
                     if url_params:
                         matched_param = list(url_params.keys())[0]
                     else:
-                        # 使用LLM辅助匹配
+                        
                         matched_param = self._llm_match_parameter(
                             url, "url", primitive, parameters, parameters
                         )
                     
                     if matched_param:
-                        step["url"] = f"{{{{{matched_param}}}}}"
-                        # 更新bindings
+                        step["url"] = f"{ { {matched_param}} } "
+                        
                         if matched_param not in bindings:
                             bindings[matched_param] = {"bind_to": []}
-                        # 检查是否已存在绑定
+                        
                         existing_binding = False
                         for bind_rule in bindings[matched_param]["bind_to"]:
                             if bind_rule.get("step") == step_idx and bind_rule.get("field") == "url":
@@ -1972,7 +1967,7 @@ Description（描述）：
                                 "step": step_idx,
                                 "field": "url"
                             })
-                        print(f"[PostProcess] 修复 step[{step_idx}].url: '{url}' -> '{{{{{matched_param}}}}}'")
+                        print(f"[PostProcess] 修复 step[{step_idx}].url: '{url}' -> '{ { {matched_param}} } '")
         
         fixed_actspec["plan"] = plan
         fixed_actspec["bindings"] = bindings
@@ -1992,10 +1987,10 @@ Description（描述）：
             return None
         action_str = str(action_sequence[step_idx]).strip()
         if field == "target.value":
-            # click [id], type [id], hover [id], select [id]
+            
             m = re.search(r"(?:click|type|hover|select)\s*\[(\d+)\]", action_str, re.I)
             if m:
-                return int(m.group(1))  # 与 temp_library 中 candidates 为数字一致
+                return int(m.group(1))  
             return None
         if field == "text":
             m = re.search(r"type\s*\[.*?\]\s*\[(.*?)\]\s*\[.*?\]", action_str)
@@ -2039,7 +2034,7 @@ Description（描述）：
                     values.append(val)
             if not values:
                 continue
-            # 去重并保持顺序（与 temp_library 中 candidates 格式一致）
+            
             seen = set()
             unique = []
             for v in values:
@@ -2049,7 +2044,7 @@ Description（描述）：
                     unique.append(v)
             param_type = param_def.get("type", "string")
             if param_type == "number" and unique:
-                # 确保数字类型 candidates 为 int
+                
                 try:
                     unique = [int(u) if isinstance(u, str) and u.isdigit() else u for u in unique]
                 except (ValueError, TypeError):
@@ -2097,11 +2092,11 @@ Description（描述）：
         if not candidate_params:
             return None
         
-        # 如果只有一个候选参数，直接返回
+        
         if len(candidate_params) == 1:
             return list(candidate_params.keys())[0]
         
-        # 构建参数描述
+        
         param_descriptions = {}
         for param_name, param_def in candidate_params.items():
             param_descriptions[param_name] = {
@@ -2141,15 +2136,15 @@ Primitive类型: {primitive}
             response = llm_utils.call_llm(self.llm_config, messages)
             response = response.strip()
             
-            # 清理响应
+            
             if "```" in response:
                 response = response.split("```")[-1].strip()
             
-            # 验证返回的参数名是否在候选参数中
+            
             if response in candidate_params:
                 return response
             else:
-                # 如果LLM返回的参数名不在候选列表中，使用第一个候选参数
+                
                 print(f"[Warning] LLM返回的参数名 '{response}' 不在候选列表中，使用第一个候选参数")
                 return list(candidate_params.keys())[0]
         except Exception as e:
@@ -2181,27 +2176,27 @@ Primitive类型: {primitive}
             "target_elements": []
         }
         
-        # 遍历action序列，为每个涉及元素的操作提取定位策略
+        
         for action_idx, action in enumerate(action_sequence):
             action_str = str(action)
             
-            # 提取element_id
+            
             element_ids = self._extract_element_ids_from_action(action_str)
             
-            # 找到action在trajectory中的实际索引
-            # 由于action_sequence可能跳过了无效的action，需要通过匹配来找到对应的trajectory索引
+            
+            
             trajectory_idx = self._find_action_in_trajectory(
                 action_str, trajectory, segment_start_idx
             )
             
             if trajectory_idx is None:
-                # 如果找不到，使用segment_start_idx + action_idx作为fallback
+                
                 trajectory_idx = segment_start_idx + action_idx
                 if trajectory_idx >= len(trajectory):
                     continue
             
             for element_id in element_ids:
-                # 抽取元素上下文
+                
                 element_context = extractor.extract_element_context(
                     trajectory, trajectory_idx, element_id
                 )
@@ -2209,20 +2204,20 @@ Primitive类型: {primitive}
                 if not element_context:
                     continue
                 
-                # 找到对应的参数名（从已定义的 parameters 中查找）
+                
                 param_name = self._find_matching_param_name(element_id, parameters, action_str)
                 
-                # 生成定位策略（传入参数名以确保一致性）
+                
                 strategies = self._generate_locate_strategies(
                     element_context, element_id, action_str, param_name
                 )
                 
                 locate["target_elements"].append({
-                    "element_id": f"{{{{{param_name}}}}}",
+                    "element_id": f"{ { {param_name}} } ",
                     "strategies": strategies
                 })
         
-        # 使用LLM增强定位策略（可选）
+        
         if locate.get("target_elements"):
             try:
                 locate = self._llm_enhance_locate_strategies(
@@ -2236,7 +2231,7 @@ Primitive类型: {primitive}
     def _extract_element_ids_from_action(self, action_str: str) -> List[str]:
         """从action字符串中提取element_id列表"""
         element_ids = []
-        # 提取click [id] 或 type [id] 中的id
+        
         matches = re.findall(r"(?:click|type|hover|select)\s*\[(\d+)\]", action_str, re.I)
         element_ids.extend(matches)
         return element_ids
@@ -2266,16 +2261,16 @@ Primitive类型: {primitive}
         
         优先查找包含该 element_id 的参数，如果找不到则使用默认命名规则
         """
-        # 首先尝试从 parameters 的 candidates 中查找匹配的参数
+        
         for param_name, param_def in parameters.items():
             candidates = param_def.get("candidates", [])
-            # 如果 candidates 是数字列表，转换为字符串比较
+            
             if candidates:
                 candidate_strs = [str(c) for c in candidates]
                 if element_id in candidate_strs:
                     return param_name
         
-        # 如果找不到匹配的参数，使用默认命名规则
+        
         return self._get_element_param_name(element_id, action_str)
     
     def _generate_locate_strategies(
@@ -2298,7 +2293,7 @@ Primitive类型: {primitive}
         semantic_features = element_context.get("semantic_features", {})
         relative_context = element_context.get("relative_context", {})
         
-        # 策略1：语义特征定位（最高优先级）
+        
         if semantic_features.get("role") or semantic_features.get("label"):
             semantic_strategy = {
                 "strategy": "semantic",
@@ -2306,7 +2301,7 @@ Primitive类型: {primitive}
                 "conditions": {}
             }
             
-            # 添加语义条件
+            
             if semantic_features.get("role"):
                 semantic_strategy["conditions"]["role"] = semantic_features["role"]
             if semantic_features.get("label"):
@@ -2314,7 +2309,7 @@ Primitive类型: {primitive}
             if semantic_features.get("text"):
                 semantic_strategy["conditions"]["text"] = semantic_features["text"]
             
-            # 添加上下文条件
+            
             context_dict = {}
             if relative_context.get("form"):
                 context_dict["parent_form"] = relative_context["form"].get("id") or relative_context["form"].get("label")
@@ -2328,21 +2323,21 @@ Primitive类型: {primitive}
             
             strategies.append(semantic_strategy)
         
-        # 策略2：相对位置定位（中等优先级）
-        # 实现：优先使用parent，如果没有则使用有特征的sibling element_id
-        # 修复：确保使用正确的参考元素element_id
+        
+        
+        
         reference_element = None
         reference_type = None
         
-        # 优先使用parent作为参考（更稳定）
+        
         parent = relative_context.get("parent")
         if parent and parent.get("element_id"):
             reference_element = parent
             reference_type = "parent"
-        # 如果没有parent，选择有特征的sibling（如image、heading等）
+        
         elif relative_context.get("siblings"):
             siblings = relative_context["siblings"]
-            # 优先选择有特定role的sibling（image、heading等更稳定的元素）
+            
             priority_roles = ["image", "heading", "button", "link"]
             for role in priority_roles:
                 for sibling in siblings:
@@ -2353,7 +2348,7 @@ Primitive类型: {primitive}
                 if reference_element:
                     break
             
-            # 如果没找到优先role的sibling，使用第一个有element_id的sibling
+            
             if not reference_element:
                 for sibling in siblings:
                     sibling_id = sibling.get("element_id")
@@ -2368,7 +2363,7 @@ Primitive类型: {primitive}
                 "priority": 2,
                 "conditions": {
                     "relative_to": {
-                        "element_id": reference_element.get("element_id"),  # 使用正确的 element_id
+                        "element_id": reference_element.get("element_id"),  
                         "position": "after" if reference_type == "sibling" else "inside",
                         "distance": "adjacent"
                     },
@@ -2380,13 +2375,13 @@ Primitive类型: {primitive}
             }
             strategies.append(relative_strategy)
         
-        # 策略3：element_id定位（最低优先级，作为fallback）
-        # 使用传入的 param_name 确保与 parameters 一致
+        
+        
         element_id_strategy = {
             "strategy": "element_id",
             "priority": 3,
             "conditions": {
-                "element_id": f"{{{{{param_name}}}}}"
+                "element_id": f"{ { {param_name}} } "
             }
         }
         strategies.append(element_id_strategy)
@@ -2403,8 +2398,8 @@ Primitive类型: {primitive}
         """
         使用LLM增强定位策略（可选，用于复杂场景）
         """
-        # 简化实现：直接返回原始locate
-        # 如果需要更复杂的LLM增强，可以在这里实现
+        
+        
         return locate
     
     def _extract_pre_condition(
@@ -2426,7 +2421,7 @@ Primitive类型: {primitive}
         Returns:
             Pre-condition字典
         """
-        # 获取执行前的observation（字符串格式）
+        
         pre_step = trajectory[segment_start_idx] if segment_start_idx < len(trajectory) else None
         if not pre_step:
             return {}
@@ -2443,27 +2438,27 @@ Primitive类型: {primitive}
             "excluded_states": []
         }
         
-        # 1. 提取URL模式（已在context中）
-        # 2. 提取必须存在的元素（从action序列推断）
+        
+        
         required_elements = self._infer_required_elements(action_sequence, pre_obs_text)
         pre_condition["required_elements"] = required_elements
         
-        # 3. 提取必须存在的区域（form、modal等）
+        
         required_regions = self._infer_required_regions(action_sequence, pre_obs_text)
         pre_condition["required_regions"] = required_regions
         
-        # 4. 检查是否有modal（从observation文本推断）
+        
         has_modal = self._check_modal_exists(pre_obs_text)
         if has_modal:
             pre_condition["required_modals"] = [{"exists": True}]
         else:
             pre_condition["required_modals"] = []
         
-        # 5. 提取excluded_states（排除的状态）
+        
         excluded_states = self._infer_excluded_states(action_sequence, pre_obs_text, context, trajectory, segment_start_idx)
         pre_condition["excluded_states"] = excluded_states
         
-        # 6. 使用LLM增强pre-condition（可选）
+        
         try:
             pre_condition = self._llm_enhance_pre_condition(
                 pre_condition, action_sequence, pre_obs_text, context
@@ -2485,20 +2480,20 @@ Primitive类型: {primitive}
         tree = parser.parse(observation_text)
         
         required_elements = []
-        seen_signatures = set()  # 用于去重
+        seen_signatures = set()  
         
         for action in action_sequence:
             action_str = str(action)
             
-            # 提取element_id
+            
             element_ids = self._extract_element_ids_from_action(action_str)
             
             for element_id in element_ids:
-                # 从解析的tree中提取元素信息
+                
                 element = parser.find_element_by_id(tree, element_id)
                 
                 if element:
-                    # 生成定位策略（复用locate的逻辑）
+                    
                     strategy = {
                         "strategy": "semantic",
                         "conditions": {}
@@ -2508,11 +2503,11 @@ Primitive类型: {primitive}
                         strategy["conditions"]["role"] = element["role"]
                     if element.get("label"):
                         strategy["conditions"]["label"] = element["label"]
-                    # 修复：添加text字段以提高匹配精度
+                    
                     if element.get("text"):
                         strategy["conditions"]["text"] = element["text"]
                     
-                    # 生成签名用于去重
+                    
                     signature = self._get_element_strategy_signature(strategy)
                     if signature not in seen_signatures:
                         required_elements.append(strategy)
@@ -2524,7 +2519,7 @@ Primitive类型: {primitive}
         """生成元素策略的签名用于去重"""
         strategy_type = strategy.get("strategy", "")
         conditions = strategy.get("conditions", {})
-        # 使用 strategy 和 conditions 的组合作为签名
+        
         conditions_str = ":".join(sorted([f"{k}={v}" for k, v in conditions.items()]))
         return f"{strategy_type}:{conditions_str}"
     
@@ -2550,13 +2545,13 @@ Primitive类型: {primitive}
             required_regions = []
             seen_regions = set()
             
-            # 从 action 序列中提取涉及的元素
+            
             for action in action_sequence:
                 action_str = str(action)
                 element_ids = self._extract_element_ids_from_action(action_str)
                 
                 for element_id in element_ids:
-                    # 获取元素的上下文信息
+                    
                     element = parser.find_element_by_id(tree, element_id)
                     if not element:
                         continue
@@ -2564,18 +2559,18 @@ Primitive类型: {primitive}
                     context = parser.get_element_context(tree, element_id)
                     region = context.get("region")
                     
-                    # 如果元素在特定区域中，记录该区域
+                    
                     if region and region not in seen_regions:
                         required_regions.append({
                             "type": "semantic",
-                            "role": region,  # main, complementary, header, footer, navigation
+                            "role": region,  
                             "description": f"Required region: {region}"
                         })
                         seen_regions.add(region)
             
-            # 如果没有从元素中提取到区域，尝试从整个 tree 中查找主要区域
+            
             if not required_regions:
-                # 查找常见的区域元素
+                
                 for element in tree.get("elements", []):
                     role = element.get("role", "")
                     if role in ["main", "complementary", "header", "footer", "navigation", "aside"]:
@@ -2602,26 +2597,26 @@ Primitive类型: {primitive}
         if not observation_text:
             return False
         
-        # 方法1：关键词检测（快速检查）
+        
         modal_keywords = ["modal", "dialog", "popup", "overlay", "alertdialog"]
         observation_lower = observation_text.lower()
         if any(keyword in observation_lower for keyword in modal_keywords):
             return True
         
-        # 方法2：检查 accessibility tree 中的 dialog/modal 角色
+        
         try:
             from .accessibility_tree_parser import AccessibilityTreeParser
             
             parser = AccessibilityTreeParser()
             tree = parser.parse(observation_text)
             
-            # 查找 dialog 或 alertdialog 角色
+            
             for element in tree.get("elements", []):
                 role = element.get("role", "").lower()
                 if role in ["dialog", "alertdialog"]:
                     return True
                 
-                # 检查 label 中是否包含 modal 相关关键词
+                
                 label = element.get("label", "").lower()
                 if any(keyword in label for keyword in ["modal", "dialog", "popup"]):
                     return True
@@ -2629,7 +2624,7 @@ Primitive类型: {primitive}
             return False
             
         except Exception:
-            # 如果解析失败，回退到关键词检测
+            
             return any(keyword in observation_lower for keyword in modal_keywords)
     
     def _llm_enhance_pre_condition(
@@ -2642,8 +2637,8 @@ Primitive类型: {primitive}
         """
         使用LLM增强pre-condition
         """
-        # 简化实现：直接返回原始pre_condition
-        # 如果需要更复杂的LLM增强，可以在这里实现
+        
+        
         return pre_condition
     
     def _extract_post_condition(
@@ -2667,7 +2662,7 @@ Primitive类型: {primitive}
         Returns:
             Post-condition字典
         """
-        # 获取执行前后的observation（字符串格式）
+        
         pre_step = trajectory[segment_start_idx] if segment_start_idx < len(trajectory) else None
         post_step = trajectory[segment_end_idx] if segment_end_idx < len(trajectory) else None
         
@@ -2688,7 +2683,7 @@ Primitive类型: {primitive}
             "modal_changes": []
         }
         
-        # 1. 检测URL变化
+        
         if pre_url != post_url:
             post_condition["url_change"] = {
                 "pattern": self._extract_url_pattern(post_url, context),
@@ -2699,27 +2694,27 @@ Primitive类型: {primitive}
                 "type": "stay"
             }
         
-        # 2. 检测新元素出现
+        
         new_elements = self._detect_new_elements(pre_obs_text, post_obs_text)
         post_condition["element_appears"] = new_elements
         
-        # 3. 检测元素消失
+        
         disappeared_elements = self._detect_disappeared_elements(pre_obs_text, post_obs_text)
         post_condition["element_disappears"] = disappeared_elements
         
-        # 4. 检测文本出现
+        
         new_texts = self._detect_new_texts(pre_obs_text, post_obs_text)
         post_condition["text_appears"] = new_texts
         
-        # 5. 检测区域更新
+        
         region_updates = self._detect_region_updates(pre_obs_text, post_obs_text)
         post_condition["region_updates"] = region_updates
         
-        # 6. 检测modal变化
+        
         modal_changes = self._detect_modal_changes(pre_obs_text, post_obs_text)
         post_condition["modal_changes"] = modal_changes
         
-        # 7. 使用LLM增强post-condition（可选）
+        
         try:
             post_condition = self._llm_enhance_post_condition(
                 post_condition, action_sequence, pre_obs_text, post_obs_text, context
@@ -2757,17 +2752,17 @@ Primitive类型: {primitive}
             parser = AccessibilityTreeParser()
             tree = parser.parse(observation_text)
             
-            # 1. 检测错误状态
+            
             error_keywords = [
                 "error", "错误", "failed", "失败", "invalid", "无效",
                 "exception", "异常", "not found", "404", "500"
             ]
             observation_lower = observation_text.lower()
             
-            # 检查是否有错误消息
+            
             has_error = any(keyword in observation_lower for keyword in error_keywords)
             if has_error:
-                # 查找错误相关的元素
+                
                 for element in tree.get("elements", []):
                     role = element.get("role", "").lower()
                     label = element.get("label", "").lower()
@@ -2785,7 +2780,7 @@ Primitive类型: {primitive}
                         })
                         break
             
-            # 2. 检测加载状态
+            
             loading_keywords = ["loading", "加载中", "please wait", "请稍候"]
             has_loading = any(keyword in observation_lower for keyword in loading_keywords)
             if has_loading:
@@ -2794,8 +2789,8 @@ Primitive类型: {primitive}
                     "description": "Page is in loading state"
                 })
             
-            # 3. 检测特定的错误URL模式
-            # 例如：404页面、500错误页面等
+            
+            
             current_url = trajectory[segment_start_idx].get("url", "") if segment_start_idx < len(trajectory) else ""
             error_url_patterns = [
                 r"/error",
@@ -2814,12 +2809,12 @@ Primitive类型: {primitive}
                     })
                     break
             
-            # 4. 检测表单验证错误状态
-            # 查找form中的错误消息
+            
+            
             for element in tree.get("elements", []):
                 role = element.get("role", "").lower()
                 if role == "form":
-                    # 检查form的子元素中是否有错误消息
+                    
                     children = element.get("children", [])
                     for child in children:
                         child_role = child.get("role", "").lower()
@@ -2843,10 +2838,10 @@ Primitive类型: {primitive}
     
     def _extract_url_pattern(self, url: str, context: Dict[str, Any]) -> str:
         """从URL提取模式"""
-        # 使用context中的url_pattern，如果没有则从URL提取
+        
         url_pattern = context.get("url_pattern", "")
         if not url_pattern and url:
-            # 简单的URL模式提取
+            
             from urllib.parse import urlparse
             parsed = urlparse(url)
             url_pattern = parsed.path or "/"
@@ -2875,9 +2870,9 @@ Primitive类型: {primitive}
             pre_tree = parser.parse(pre_obs_text)
             post_tree = parser.parse(post_obs_text)
             
-            # 只使用完整签名（包含element_id），放宽检测条件
-            pre_signatures_full = set()  # 完整签名（包含element_id）
-            pre_element_ids = set()  # 所有element_id集合
+            
+            pre_signatures_full = set()  
+            pre_element_ids = set()  
             
             for e in pre_tree.get("elements", []):
                 if e.get("element_id"):
@@ -2886,7 +2881,7 @@ Primitive类型: {primitive}
                     pre_element_ids.add(e.get("element_id"))
             
             new_elements = []
-            seen_signatures = set()  # 用于去重
+            seen_signatures = set()  
             
             for post_element in post_tree.get("elements", []):
                 if not post_element.get("element_id"):
@@ -2895,23 +2890,23 @@ Primitive类型: {primitive}
                 signature_full = self._get_element_signature(post_element)
                 post_element_id = post_element.get("element_id")
                 
-                # 放宽检测条件：只要完整签名不匹配就认为是新元素
-                # 即使element_id变化但语义特征相同，也认为是状态变化
+                
+                
                 is_new = (signature_full not in pre_signatures_full and
                          signature_full not in seen_signatures)
                 
-                # 额外检测：如果element_id不在pre中，也认为是新元素（即使语义特征可能相同）
+                
                 if not is_new and post_element_id not in pre_element_ids:
                     is_new = True
                 
                 if is_new:
-                    # 排除错误/失败类元素，不作为“成功执行后出现”的 post 条件（与 text_appears 一致）
+                    
                     label = (post_element.get("label") or "").strip()
                     text = (post_element.get("text") or "").strip()
                     if self._is_error_or_failure_text(label) or self._is_error_or_failure_text(text):
                         seen_signatures.add(signature_full)
                         continue
-                    # 这是一个新元素或状态变化的元素
+                    
                     strategy = {
                         "strategy": "semantic",
                         "conditions": {}
@@ -2931,7 +2926,7 @@ Primitive类型: {primitive}
                     seen_signatures.add(signature_full)
         
         except Exception as e:
-            # 如果解析失败，返回空列表
+            
             print(f"[Warning] 检测新元素时出错: {e}")
             return []
         
@@ -2948,12 +2943,12 @@ Primitive类型: {primitive}
         text = element.get("text", "")
         element_id = element.get("element_id", "")
         
-        # 使用组合签名以提高唯一性
-        # 如果 element_id 存在，优先使用它（最唯一）
+        
+        
         if element_id:
             return f"{role}:{label}:{text}:{element_id}"
         else:
-            # 如果没有 element_id，使用 role:label:text 组合
+            
             return f"{role}:{label}:{text}"
     
     def _get_element_signature_partial(self, element: Dict[str, Any]) -> str:
@@ -2965,7 +2960,7 @@ Primitive类型: {primitive}
         role = element.get("role", "")
         label = element.get("label", "")
         text = element.get("text", "")
-        # 不包含element_id，只比较语义特征
+        
         return f"{role}:{label}:{text}"
     
     def _detect_disappeared_elements(
@@ -2990,7 +2985,7 @@ Primitive类型: {primitive}
             print(f"[Warning] 解析observation时出错: {e}")
             return []
         
-        # 只使用完整签名（包含element_id），放宽检测条件
+        
         post_signatures_full = {
             self._get_element_signature(e) 
             for e in post_tree.get("elements", [])
@@ -3011,10 +3006,10 @@ Primitive类型: {primitive}
             signature_full = self._get_element_signature(pre_element)
             pre_element_id = pre_element.get("element_id")
             
-            # 放宽检测条件：只要完整签名不匹配就认为是消失的元素
+            
             is_disappeared = signature_full not in post_signatures_full
             
-            # 额外检测：如果element_id不在post中，也认为是消失的元素
+            
             if not is_disappeared and pre_element_id not in post_element_ids:
                 is_disappeared = True
             
@@ -3047,7 +3042,7 @@ Primitive类型: {primitive}
             "error", "错误", "failed", "失败", "invalid", "无效",
             "exception", "异常", "not found", "404", "500",
             "loading", "加载中", "please wait", "请稍候",
-            "synchronize", "synchronization", "magento business intelligence",  # 常见后台错误
+            "synchronize", "synchronization", "magento business intelligence",  
         ]
         return any(kw in text_lower for kw in error_keywords)
     
@@ -3077,50 +3072,50 @@ Primitive类型: {primitive}
             pre_tree = parser.parse(pre_obs_text)
             post_tree = parser.parse(post_obs_text)
             
-            # 提取执行前后的所有文本内容
+            
             pre_texts = set()
             post_texts = set()
             
-            # 从pre_tree中提取所有文本
+            
             for element in pre_tree.get("elements", []):
-                # 提取label和text（None 安全）
+                
                 label = (element.get("label") or "").strip()
                 text = (element.get("text") or "").strip()
                 if label:
                     pre_texts.add(label.lower())
                 if text and text != label:
                     pre_texts.add(text.lower())
-                # 提取纯文本元素（role为text的元素）
+                
                 if (element.get("role") or "").strip() == "text":
                     text_content = (element.get("text") or "").strip()
                     if text_content:
                         pre_texts.add(text_content.lower())
             
-            # 从post_tree中提取所有文本
+            
             for element in post_tree.get("elements", []):
-                # 提取label和text（None 安全）
+                
                 label = (element.get("label") or "").strip()
                 text = (element.get("text") or "").strip()
                 if label:
                     post_texts.add(label.lower())
                 if text and text != label:
                     post_texts.add(text.lower())
-                # 提取纯文本元素（role为text的元素）
+                
                 if (element.get("role") or "").strip() == "text":
                     text_content = (element.get("text") or "").strip()
                     if text_content:
                         post_texts.add(text_content.lower())
             
-            # 找出新增的文本（在post中但不在pre中）
+            
             new_text_set = post_texts - pre_texts
             
-            # 为了保留原始文本的大小写和格式，需要从post_tree中查找对应的原始文本
+            
             seen_texts = set()
             for element in post_tree.get("elements", []):
                 label = (element.get("label") or "").strip()
                 text = (element.get("text") or "").strip()
                 
-                # 检查label（排除错误/失败类文本，避免 post 条件不可用）
+                
                 if label and label.lower() in new_text_set and label.lower() not in seen_texts:
                     if not self._is_error_or_failure_text(label):
                         new_texts.append({
@@ -3129,7 +3124,7 @@ Primitive类型: {primitive}
                         })
                     seen_texts.add(label.lower())
                 
-                # 检查text
+                
                 if text and text != label and text.lower() in new_text_set and text.lower() not in seen_texts:
                     if not self._is_error_or_failure_text(text):
                         new_texts.append({
@@ -3138,7 +3133,7 @@ Primitive类型: {primitive}
                         })
                     seen_texts.add(text.lower())
                 
-                # 检查纯文本元素
+                
                 if (element.get("role") or "").strip() == "text":
                     text_content = (element.get("text") or "").strip()
                     if text_content and text_content.lower() in new_text_set and text_content.lower() not in seen_texts:
@@ -3149,14 +3144,14 @@ Primitive类型: {primitive}
                             })
                         seen_texts.add(text_content.lower())
             
-            # 如果通过元素解析没有找到足够的文本变化，使用文本差异方法
-            # 提取observation中的纯文本行（以text开头的行）
+            
+            
             pre_text_lines = set()
             post_text_lines = set()
             
             for line in pre_obs_text.split('\n'):
                 line = (line or "").strip()
-                # 匹配格式：text '...' 或 text "..."
+                
                 match = re.match(r"^text\s+['\"]([^'\"]+)['\"]", line)
                 if match:
                     text_content = (match.group(1) or "").strip()
@@ -3171,10 +3166,10 @@ Primitive类型: {primitive}
                     if text_content:
                         post_text_lines.add(text_content.lower())
             
-            # 找出新增的文本行
+            
             new_text_lines = post_text_lines - pre_text_lines
             
-            # 从原始文本中提取完整内容
+            
             for line in post_obs_text.split('\n'):
                 line = (line or "").strip()
                 match = re.match(r"^text\s+['\"]([^'\"]+)['\"]", line)
@@ -3182,7 +3177,7 @@ Primitive类型: {primitive}
                     text_content = (match.group(1) or "").strip()
                     if text_content and text_content.lower() in new_text_lines:
                         text_lower = text_content.lower()
-                        # 避免重复添加，并排除错误/失败类文本
+                        
                         if text_lower not in seen_texts and not self._is_error_or_failure_text(text_content):
                             new_texts.append({
                                 "text": text_content,
@@ -3192,22 +3187,22 @@ Primitive类型: {primitive}
         
         except Exception as e:
             print(f"[Warning] 检测新文本时出错: {e}")
-            # 如果解析失败，使用简单的文本差异方法作为回退
+            
             try:
                 import re
-                # 提取所有文本片段（单词、短语等）
+                
                 pre_words = set(re.findall(r'\b\w+\b', pre_obs_text.lower()))
                 post_words = set(re.findall(r'\b\w+\b', post_obs_text.lower()))
                 new_words = post_words - pre_words
                 
-                # 如果新增的单词数量较多，说明有文本变化
+                
                 if len(new_words) > 0:
-                    # 尝试提取包含新单词的完整短语
-                    for word in list(new_words)[:10]:  # 限制数量，避免过多
-                        # 在post_obs_text中查找包含该单词的短语
+                    
+                    for word in list(new_words)[:10]:  
+                        
                         pattern = rf'\b\w*\s*{re.escape(word)}\s*\w*\b'
                         matches = re.findall(pattern, post_obs_text, re.IGNORECASE)
-                        for match in matches[:3]:  # 每个单词最多3个短语
+                        for match in matches[:3]:  
                             match_lower = match.lower()
                             if match_lower not in [t.get("text", "").lower() for t in new_texts]:
                                 if not self._is_error_or_failure_text(match):
@@ -3242,14 +3237,14 @@ Primitive类型: {primitive}
             
             region_updates = []
             
-            # 定义区域类型
+            
             region_roles = ["main", "complementary", "header", "footer", "navigation", "aside"]
             
-            # 提取执行前后的区域信息
+            
             pre_regions = {}
             post_regions = {}
             
-            # 从 pre_tree 中提取区域
+            
             for element in pre_tree.get("elements", []):
                 role = element.get("role", "")
                 if role in region_roles:
@@ -3263,7 +3258,7 @@ Primitive类型: {primitive}
                             "text": element.get("text", "")
                         })
             
-            # 从 post_tree 中提取区域
+            
             for element in post_tree.get("elements", []):
                 role = element.get("role", "")
                 if role in region_roles:
@@ -3277,22 +3272,22 @@ Primitive类型: {primitive}
                             "text": element.get("text", "")
                         })
             
-            # 检测区域变化
-            # 1. 检测新出现的区域
+            
+            
             for role, post_region_elements in post_regions.items():
                 if role not in pre_regions:
-                    # 新区域出现
+                    
                     region_updates.append({
                         "type": "appeared",
                         "role": role,
                         "description": f"New region '{role}' appeared"
                     })
                 else:
-                    # 区域内容可能发生变化（元素数量或内容变化）
+                    
                     pre_count = len(pre_regions[role])
                     post_count = len(post_region_elements)
                     
-                    # 改进：不仅检测数量变化，还检测内容变化
+                    
                     if post_count != pre_count:
                         region_updates.append({
                             "type": "updated",
@@ -3302,8 +3297,8 @@ Primitive类型: {primitive}
                             "post_count": post_count
                         })
                     else:
-                        # 即使数量相同，也可能内容发生变化
-                        # 比较元素的label和text
+                        
+                        
                         pre_labels = {e.get("label", "") for e in pre_regions[role]}
                         post_labels = {e.get("label", "") for e in post_region_elements}
                         if pre_labels != post_labels:
@@ -3313,7 +3308,7 @@ Primitive类型: {primitive}
                                 "description": f"Region '{role}' content updated"
                             })
             
-            # 2. 检测消失的区域
+            
             for role in pre_regions:
                 if role not in post_regions:
                     region_updates.append({
@@ -3350,16 +3345,16 @@ Primitive类型: {primitive}
             
             modal_changes = []
             
-            # 提取执行前后的 modal 信息
+            
             pre_modals = []
             post_modals = []
             
-            # 从 pre_tree 中提取 modal
+            
             for element in pre_tree.get("elements", []):
                 role = (element.get("role") or "").lower()
                 label = (element.get("label") or "").lower()
                 
-                # 检查是否是 modal/dialog
+                
                 is_modal = (
                     role in ["dialog", "alertdialog"] or
                     any(keyword in role for keyword in ["modal", "dialog"]) or
@@ -3377,7 +3372,7 @@ Primitive类型: {primitive}
                         "type": modal_type
                     })
             
-            # 从 post_tree 中提取 modal
+            
             for element in post_tree.get("elements", []):
                 role = (element.get("role") or "").lower()
                 label = (element.get("label") or "").lower()
@@ -3399,8 +3394,8 @@ Primitive类型: {primitive}
                         "type": modal_type
                     })
             
-            # 检测 modal 变化
-            # 1. 检测新出现的 modal
+            
+            
             pre_modal_ids = {m.get("element_id") for m in pre_modals if m.get("element_id")}
             post_modal_ids = {m.get("element_id") for m in post_modals if m.get("element_id")}
             
@@ -3414,7 +3409,7 @@ Primitive类型: {primitive}
                         "description": f"Modal opened: {modal.get('label') or 'Unknown'}"
                     })
             
-            # 2. 检测关闭的 modal
+            
             closed_modal_ids = pre_modal_ids - post_modal_ids
             for modal in pre_modals:
                 if modal.get("element_id") in closed_modal_ids:
@@ -3425,12 +3420,12 @@ Primitive类型: {primitive}
                         "description": f"Modal closed: {modal.get('label') or 'Unknown'}"
                     })
             
-            # 3. 检测 modal 内容变化（如果 modal 仍然存在但内容可能变化）
+            
             existing_modal_ids = pre_modal_ids & post_modal_ids
             if existing_modal_ids:
-                # 简单检测：如果 modal 数量相同但内容可能变化
+                
                 if len(pre_modals) == len(post_modals) and len(existing_modal_ids) > 0:
-                    # 可以进一步比较 modal 内容，这里简化处理
+                    
                     modal_changes.append({
                         "type": "updated",
                         "description": "Modal content may have changed"
@@ -3458,7 +3453,7 @@ Primitive类型: {primitive}
         """
         import json
         
-        # 检查post_condition是否有实际内容（除了默认的url_change: stay）
+        
         has_content = (
             post_condition.get("element_appears") or
             post_condition.get("element_disappears") or
@@ -3468,17 +3463,17 @@ Primitive类型: {primitive}
             (post_condition.get("url_change", {}).get("type") == "navigate")
         )
         
-        # 总是使用LLM增强，即使基础检测有内容也会合并
-        # 这样可以确保即使基础检测方法遗漏了某些变化，LLM也能补充
         
-        # 构建action序列摘要
+        
+        
+        
         action_summary = []
         for i, action in enumerate(action_sequence):
             action_str = str(action)
             action_summary.append(f"Step {i}: {action_str}")
         action_summary_str = "\n".join(action_summary)
         
-        # 限制observation文本长度，避免超出token限制
+        
         pre_obs_snippet = pre_obs_text[:2000] if len(pre_obs_text) > 2000 else pre_obs_text
         post_obs_snippet = post_obs_text[:2000] if len(post_obs_text) > 2000 else post_obs_text
         
@@ -3584,17 +3579,17 @@ Action序列：
             response = llm_utils.call_llm(self.llm_config, messages)
             response = response.strip()
             
-            # 清理响应，提取JSON部分
+            
             if "```json" in response:
                 response = response.split("```json")[1].split("```")[0].strip()
             elif "```" in response:
                 response = response.split("```")[1].split("```")[0].strip()
             
-            # 解析JSON
+            
             llm_post_condition = json.loads(response)
             
-            # 合并LLM结果和基础检测结果
-            # 优先使用LLM的结果，但保留基础检测的URL变化（如果LLM没有提供）
+            
+            
             enhanced_post_condition = {
                 "url_change": llm_post_condition.get("url_change", post_condition.get("url_change", {"type": "stay"})),
                 "element_appears": llm_post_condition.get("element_appears", []),
@@ -3604,7 +3599,7 @@ Action序列：
                 "modal_changes": llm_post_condition.get("modal_changes", [])
             }
             
-            # 如果LLM没有检测到变化，但基础检测有，则合并（去重）
+            
             if not enhanced_post_condition["element_appears"] and post_condition.get("element_appears"):
                 enhanced_post_condition["element_appears"] = post_condition["element_appears"]
             if not enhanced_post_condition["element_disappears"] and post_condition.get("element_disappears"):
@@ -3643,29 +3638,28 @@ Action序列：
         Returns:
             找到的trajectory索引，如果找不到则返回None
         """
-        # 从start_idx开始向后搜索，最多搜索20步
+        
         search_range = min(start_idx + 20, len(trajectory))
         
         for i in range(start_idx, search_range):
             step = trajectory[i]
             step_action = step.get("action", "")
             
-            # 标准化action字符串进行比较
+            
             step_action_str = str(step_action).strip()
             action_str_clean = action_str.strip()
             
-            # 简单的字符串匹配（可以改进为更智能的匹配）
+            
             if step_action_str == action_str_clean:
                 return i
             
-            # 提取element_id进行匹配（如果action包含element_id）
+            
             action_ids = self._extract_element_ids_from_action(action_str_clean)
             step_ids = self._extract_element_ids_from_action(step_action_str)
             
             if action_ids and step_ids and action_ids[0] == step_ids[0]:
-                # 如果element_id匹配，且action类型相同，认为是同一个action
-                if (action_str_clean.lower().startswith("click") and step_action_str.lower().startswith("click")) or \
-                   (action_str_clean.lower().startswith("type") and step_action_str.lower().startswith("type")):
+                
+                if (action_str_clean.lower().startswith("click") and step_action_str.lower().startswith("click")) or                   (action_str_clean.lower().startswith("type") and step_action_str.lower().startswith("type")):
                     return i
         
         return None

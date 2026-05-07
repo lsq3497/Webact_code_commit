@@ -17,12 +17,12 @@ class StepResult(TypedDict, total=False):
     page_changed: bool
 
 
-# 无页面变化时仍视为 step 成功的 primitive 白名单（readiness 通过且 action 未异常时）
+
 NO_PAGE_CHANGE_ALLOWLIST_PRIMITIVES = frozenset({
-    "FOCUS",      # 激活输入框类 click，通常无 DOM/URL 变化
-    "CLICK",      # click on checkbox/radio 已是目标状态（幂等）；focus 类 click
-    "TYPE",       # input where value == expected value
-    "HOVER",      # hover / tooltip 未计入 DOM diff
+    "FOCUS",      
+    "CLICK",      
+    "TYPE",       
+    "HOVER",      
 })
 
 
@@ -45,10 +45,10 @@ def execute_step(
     target = step.get("target", {})
     strategy = target.get("strategy", "")
     value_raw = target.get("value")
-    # 统一按字符串比较；value 可能来自绑定为 int（如 element_id）
+    
     value_str = (str(value_raw).strip() if value_raw is not None else "")
 
-    # 1. Locate 结果已由上层写入 step；此处仅做失败判定
+    
     if strategy == "element_id":
         if value_str == locate_multiple_candidates_marker:
             return {
@@ -70,7 +70,7 @@ def execute_step(
     else:
         element_id = None
 
-    # 2. Readiness（仅当有 element_id 时）
+    
     if element_id:
         ready, reason = readiness_check_fn(env, element_id)
         if not ready:
@@ -82,10 +82,10 @@ def execute_step(
                 "page_changed": False,
             }
 
-    # 3. Action
+    
     action_str = plan_step_to_action(step)
     if not action_str:
-        # 无 action 的 step（如 NOTE）视为成功、无页面变化
+        
         return {
             "success": True,
             "failure_reason": None,
@@ -105,7 +105,7 @@ def execute_step(
             "page_changed": False,
         }
 
-    # 4. 页面变化验证
+    
     current_step_target_id = element_id if strategy == "element_id" else None
     page_changed = page_change_detector_module.has_change(
         env, snapshot_before, current_step_target_id
@@ -118,7 +118,7 @@ def execute_step(
             "action_str": action_str,
             "page_changed": True,
         }
-    # 无页面变化：检查白名单
+    
     if primitive in NO_PAGE_CHANGE_ALLOWLIST_PRIMITIVES:
         return {
             "success": True,
